@@ -4,7 +4,7 @@ import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { ProductService } from '../product/product.service';
 import { Throttle } from '@nestjs/throttler';
 
-@Controller('api/h2h')
+@Controller('h2h')
 @UseGuards(ApiKeyGuard)
 export class H2hController {
   constructor(
