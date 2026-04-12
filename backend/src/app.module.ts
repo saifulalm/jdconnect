@@ -31,6 +31,17 @@ import { TaxModule } from './tax/tax.module';
         const databaseUrl = configService.get<string>('DATABASE_URL');
         const nodeEnv = configService.get<string>('NODE_ENV');
 
+        if (nodeEnv === 'test') {
+          return {
+            type: 'sqlite' as const,
+            database: ':memory:',
+            entities: [__dirname + '/**/*.entity{.ts,.js}'],
+            synchronize: true,
+            logging: false,
+            namingStrategy: new SnakeNamingStrategy(),
+          };
+        }
+
         const synchronize = configService.get<string>('TYPEORM_SYNC') === 'true' || nodeEnv === 'development';
         const logging = configService.get<string>('TYPEORM_LOGGING') === 'true' || nodeEnv === 'development';
 

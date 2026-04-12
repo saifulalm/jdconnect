@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +25,15 @@ export function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [user, setUser] = useState<any>(null);
   const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+  }, []);
 
   const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
@@ -106,7 +114,11 @@ export function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
           {/* Profile Dropdown */}
           <div className="flex items-center gap-2">
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center font-bold text-white shadow-lg">
-              JD
+              {user?.name?.[0] || "JD"}
+            </div>
+            <div className="hidden md:block text-right">
+              <p className="text-sm font-medium text-foreground">{user?.name || "User"}</p>
+              <p className="text-[10px] text-muted-foreground -mt-0.5">{user?.role || ""}</p>
             </div>
             <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl">
               <ChevronDown className="h-4 w-4" />

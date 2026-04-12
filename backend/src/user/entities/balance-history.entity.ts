@@ -30,7 +30,7 @@ export class BalanceHistory {
   balanceAfter: number;
 
   @Column({
-    type: 'enum',
+    type: 'simple-enum',
     enum: BalanceChangeType,
   })
   type: BalanceChangeType;

@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
-import { Product } from 'src/product/entities/product.entity';
+import { Product } from '../../product/entities/product.entity';
 
 export enum TransactionStatus {
   PENDING = 'pending',
@@ -29,7 +29,7 @@ export class Transaction {
   userId: string;
 
   @Column({
-    type: 'enum',
+    type: 'simple-enum',
     enum: TransactionType,
   })
   type: TransactionType;
@@ -53,7 +53,7 @@ export class Transaction {
   price: number;
 
   @Column({
-    type: 'enum',
+    type: 'simple-enum',
     enum: TransactionStatus,
     default: TransactionStatus.PENDING,
   })

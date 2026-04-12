@@ -3,6 +3,7 @@ import { TaxService } from './tax.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/roles/role.enum';
 
 @Controller('tax')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,7 +17,7 @@ export class TaxController {
   }
 
   // Admin only
-  @Roles('admin')
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
   @Patch('rate')
   async setTaxRate(@Body() body: { rate: number }) {
     return await this.taxService.setTaxRate(body.rate);

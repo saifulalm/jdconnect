@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Role } from '../../auth/roles/role.enum';
 
 @Entity('users')
 export class User {
@@ -17,8 +18,8 @@ export class User {
   @Column({ nullable: true })
   phone: string;
 
-  @Column({ default: 'user' })
-  role: string;
+  @Column({ type: 'varchar', default: Role.CUSTOMER })
+  role: Role;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   balance: number;

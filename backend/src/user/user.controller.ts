@@ -5,12 +5,17 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/roles/role.enum';
+import { SelfOrRoles } from '../auth/decorators/self-or-roles.decorator';
+import { SelfOrRolesGuard } from '../auth/guards/self-or-roles.guard';
 
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
   create(@Body() createUserDto: CreateUserDto) {
     return this.userService.create(createUserDto);
   }
@@ -19,9 +24,13 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req) {
     const user = await this.userService.findById(req.user.id);
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    const { password, ...safeUser } = user as any;
     return {
       status: 'success',
-      data: user,
+      data: safeUser,
     };
   }
 
@@ -47,13 +56,14 @@ export class UserController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
   findOne(@Param('id') id: string) {
     return this.userService.findById(id);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SelfOrRolesGuard)
+  @SelfOrRoles(Role.ADMIN, Role.SUPERACCESS)
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.userService.update(id, updateUserDto);
   }

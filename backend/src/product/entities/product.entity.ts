@@ -18,7 +18,7 @@ export class Product {
   name: string;
 
   @Column({
-    type: 'enum',
+    type: 'simple-enum',
     enum: ProductCategory,
   })
   category: ProductCategory;

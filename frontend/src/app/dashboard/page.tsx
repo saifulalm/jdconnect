@@ -41,9 +41,11 @@ interface User {
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [products, setProducts] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("pulsa");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isProductsLoading, setIsProductsLoading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -72,7 +74,28 @@ export default function DashboardPage() {
       }
     };
 
+    const fetchProducts = async () => {
+      setIsProductsLoading(true);
+      try {
+        const response = await fetch(apiUrl("/products"), {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        const data = await response.json();
+        if (data.status === 'success' || Array.isArray(data)) {
+          const prodData = Array.isArray(data) ? data : data.data || data;
+          setProducts(prodData);
+        }
+      } catch (error) {
+        console.error("Failed to fetch products:", error);
+      } finally {
+        setIsProductsLoading(false);
+      }
+    };
+
     fetchUserProfile();
+    fetchProducts();
   }, [router]);
 
   const handleLogout = () => {
@@ -88,16 +111,6 @@ export default function DashboardPage() {
     { id: "game", name: "Voucher Game", icon: Gamepad2, description: "Topup game" },
     { id: "ewallet", name: "E-Wallet", icon: Wallet, description: "Isi saldo" },
   ];
-
-  const products: Record<string, any[]> = {
-    pulsa: [
-      { id: 1, name: "Telkomsel 10K", price: 11500, provider: "Telkomsel", color: "bg-red-500/10 text-red-500 border-red-500/20" },
-      { id: 2, name: "Indosat 10K", price: 11000, provider: "Indosat", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" },
-      { id: 3, name: "XL 10K", price: 11000, provider: "XL", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
-      { id: 4, name: "Smartfren 10K", price: 10500, provider: "Smartfren", color: "bg-pink-500/10 text-pink-500 border-pink-500/20" },
-    ],
-    // ... other categories can be populated similarly
-  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -190,35 +203,50 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {(products[selectedCategory] || products.pulsa).map((product) => (
-                <Card key={product.id} className="glass-dark border-white/5 rounded-[2rem] overflow-hidden group hover:border-primary/50 transition-all duration-500">
-                  <div className="p-6 space-y-6">
-                    <div className="flex justify-between items-start">
-                      <div className={`px-4 py-1.5 rounded-xl text-[10px] font-bold tracking-widest uppercase border ${product.color}`}>
-                        {product.provider}
-                      </div>
-                      <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                        <Zap className="h-5 w-5 text-slate-400 group-hover:text-primary transition-colors" />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">{product.name}</h3>
-                      <p className="text-xs text-slate-500 font-medium">Stok Ready • Instan</p>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                      <div className="space-y-0.5">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Harga</p>
-                        <p className="text-xl font-bold text-primary">{formatCurrency(product.price)}</p>
-                      </div>
-                      <Button className="h-12 w-12 rounded-2xl shadow-glow p-0">
-                        <Plus className="h-6 w-6" />
-                      </Button>
-                    </div>
+              {isProductsLoading ? (
+                <div className="col-span-full flex justify-center py-12">
+                  <div className="flex items-center gap-3 text-slate-400">
+                    <Zap className="h-5 w-5 animate-spin" />
+                    Memuat produk...
                   </div>
-                </Card>
-              ))}
+                </div>
+              ) : products.length > 0 ? (
+                products
+                  .filter(p => !selectedCategory || p.category?.toLowerCase() === selectedCategory || p.category === selectedCategory)
+                  .map((product: any) => (
+                    <Card key={product.id} className="glass-dark border-white/5 rounded-[2rem] overflow-hidden group hover:border-primary/50 transition-all duration-500">
+                      <div className="p-6 space-y-6">
+                        <div className="flex justify-between items-start">
+                          <div className="px-4 py-1.5 rounded-xl text-[10px] font-bold tracking-widest uppercase border border-primary/30 text-primary">
+                            {product.provider}
+                          </div>
+                          <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                            <Zap className="h-5 w-5 text-slate-400 group-hover:text-primary transition-colors" />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h3 className="font-bold text-lg mb-1">{product.name}</h3>
+                          <p className="text-xs text-slate-500 font-medium">Stok: {product.stock || 'Ready'} • Instan</p>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Harga</p>
+                            <p className="text-xl font-bold text-primary">{formatCurrency(product.price)}</p>
+                          </div>
+                          <Button className="h-12 w-12 rounded-2xl shadow-glow p-0" onClick={() => router.push(`/transaction?product=${product.id}`)}>
+                            <Plus className="h-6 w-6" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+              ) : (
+                <div className="col-span-full py-12 text-center text-slate-400">
+                  Tidak ada produk tersedia saat ini.
+                </div>
+              )}
             </div>
           </div>
 

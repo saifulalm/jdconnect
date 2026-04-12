@@ -8,10 +8,16 @@ export class TaxSetting {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 11.00 })
   rate: number;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    type: (process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamptz') as any,
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   effectiveFrom: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({
+    type: (process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamptz') as any,
+    nullable: true,
+  })
   effectiveTo: Date | null;
 
   @Column({ default: true })

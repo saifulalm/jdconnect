@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -28,18 +28,64 @@ import { BrandMark } from "@/components/brand-mark";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
   const [formData, setFormData] = useState({
-    name: "User Name",
-    email: "user@example.com",
-    phone: "+62 812 3456 7890",
+    name: "",
+    email: "",
+    phone: "",
     notifications: true,
     darkMode: true,
   });
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      const parsed = JSON.parse(storedUser);
+      setUser(parsed);
+      setFormData({
+        name: parsed.name || "",
+        email: parsed.email || "",
+        phone: parsed.phone || "+62 812 3456 7890",
+        notifications: true,
+        darkMode: true,
+      });
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Update profile via API
-    alert("Pengaturan disimpan!");
+    const token = localStorage.getItem("token");
+    if (!token || !user) return;
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(apiUrl(`/users/${user.id}`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+        }),
+      });
+      const data = await response.json();
+      if (data.status === "success") {
+        const updatedUser = { ...user, ...data.data };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        alert("Pengaturan berhasil disimpan!");
+      } else {
+        alert(data.message || "Gagal menyimpan");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Terjadi kesalahan saat menyimpan");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleLogout = () => {
@@ -79,8 +125,8 @@ export default function SettingsPage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      className="h-14 bg-white/5 border-white/5 rounded-2xl focus:ring-primary/50"
+                      disabled
+                      className="h-14 bg-white/5 border-white/5 rounded-2xl focus:ring-primary/50 opacity-75"
                     />
                   </div>
 
@@ -127,8 +173,8 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="flex gap-4 pt-4">
-                    <Button type="submit" className="flex-1 h-14 rounded-2xl shadow-glow">
-                      <Save className="mr-2 h-4 w-4" /> Simpan Perubahan
+                    <Button type="submit" disabled={isSaving} className="flex-1 h-14 rounded-2xl shadow-glow">
+                      <Save className="mr-2 h-4 w-4" /> {isSaving ? "Menyimpan..." : "Simpan Perubahan"}
                     </Button>
                     <Button type="button" variant="outline" className="flex-1 h-14 rounded-2xl" onClick={handleLogout}>
                       <LogOut className="mr-2 h-4 w-4" /> Keluar

@@ -61,9 +61,12 @@ export class UserService {
     description?: string,
   ): Promise<User> {
     return await this.dataSource.transaction(async (manager) => {
+      const lockOption =
+        this.dataSource.options.type === 'sqlite' ? undefined : ({ mode: 'pessimistic_write' } as const);
+
       const user = await manager.findOne(User, {
         where: { id: userId },
-        lock: { mode: 'pessimistic_write' }, // Prevents race conditions
+        ...(lockOption ? { lock: lockOption } : {}),
       });
 
       if (!user) throw new BadRequestException('User not found');

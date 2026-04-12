@@ -10,17 +10,20 @@ import {
   BarChart3,
   Key, 
   Settings,
-  LogOut
+  LogOut,
+  Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/brand-mark";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 interface NavItem {
   name: string;
   icon: any;
   href: string;
+  roles?: string[];
 }
 
 const navItems: NavItem[] = [
@@ -30,17 +33,31 @@ const navItems: NavItem[] = [
   { name: "Analytics", icon: BarChart3, href: "/dashboard/analytics" },
   { name: "API H2H", icon: Key, href: "/dashboard/api" },
   { name: "Pengaturan", icon: Settings, href: "/dashboard/settings" },
+  { name: "Admin", icon: Shield, href: "/admin", roles: ["ADMIN", "SUPERACCESS"] },
 ];
 
 export function Sidebar({ isMobileOpen, onClose }: { isMobileOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     router.push("/login");
   };
+
+  const filteredNavItems = navItems.filter(item => {
+    if (!item.roles || !user?.role) return true;
+    return item.roles.includes(user.role);
+  });
 
   return (
     <>
@@ -65,7 +82,7 @@ export function Sidebar({ isMobileOpen, onClose }: { isMobileOpen: boolean; onCl
 
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -91,11 +108,12 @@ export function Sidebar({ isMobileOpen, onClose }: { isMobileOpen: boolean; onCl
           <Card className="glass-dark border-slate-800/50 bg-slate-900/50 backdrop-blur-sm hover:border-slate-700 transition-all">
             <div className="flex items-center gap-3 p-4">
               <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">JD</span>
+                <span className="text-white font-bold text-lg">{user?.name?.[0] || "JD"}</span>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white truncate">User Name</p>
-                <p className="text-xs text-slate-400 truncate">user@jdconnect.com</p>
+                <p className="font-semibold text-white truncate">{user?.name || "User Name"}</p>
+                <p className="text-xs text-slate-400 truncate">{user?.email || "user@jdconnect.com"}</p>
+                {user?.role && <p className="text-[10px] uppercase tracking-widest text-primary/70 mt-0.5">{user.role}</p>}
               </div>
             </div>
             <Button
