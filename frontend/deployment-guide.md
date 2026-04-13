@@ -7,10 +7,12 @@
 - Vercel account (Frontend)
 - Railway/Heroku (Backend)
 
-## Frontend Deployment (Vercel)
+## Frontend Deployment (Vercel - Full SSR)
 1. `npm install`
 2. `npm run build`
 3. `vercel --prod`
+
+**Catatan penting**: Sekarang menggunakan full Server-Side Rendering (SSR). Tidak ada folder `out/` atau static export lagi. Semua halaman dirender di server untuk performa dan SEO yang lebih baik.
 
 Environment Variables:
 ```

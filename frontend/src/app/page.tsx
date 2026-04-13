@@ -79,16 +79,16 @@ export default function Home() {
 
                 <div className="grid grid-cols-3 gap-6 pt-10 border-t border-white/5 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-700">
                   <div>
-                    <div className="text-2xl font-bold">99.9%</div>
-                    <div className="text-sm text-muted-foreground">Uptime API</div>
+                    <div className="text-3xl font-bold text-white">99.9%</div>
+                    <div className="text-sm text-muted-foreground mt-1">Uptime API</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">~3 Detik</div>
-                    <div className="text-sm text-muted-foreground">Kecepatan Proses</div>
+                    <div className="text-3xl font-bold text-white">~3 Detik</div>
+                    <div className="text-sm text-muted-foreground mt-1">Kecepatan Proses</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">24/7</div>
-                    <div className="text-sm text-muted-foreground">Dukungan Sistem</div>
+                    <div className="text-3xl font-bold text-white">24/7</div>
+                    <div className="text-sm text-muted-foreground mt-1">Dukungan Sistem</div>
                   </div>
                 </div>
               </div>

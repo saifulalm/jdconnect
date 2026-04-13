@@ -74,14 +74,14 @@ export default function LoginPage() {
               <div className="absolute inset-0 bg-primary/30 blur-xl rounded-full group-hover:bg-primary/50 transition-all duration-300" />
               <Zap className="relative h-10 w-10 text-primary" />
             </div>
-            <span className="text-2xl font-bold tracking-tight">Pulsa<span className="text-primary">Ku</span></span>
+            <span className="text-2xl font-bold tracking-tight">JDConnect</span>
           </Link>
         </div>
         
         <Card className="glass border-white/10 p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold mb-2">Selamat Datang</h1>
-            <p className="text-muted-foreground">Masuk ke akun PulsaKu Anda</p>
+            <h1 className="text-3xl font-bold mb-2 text-white">Selamat Datang</h1>
+            <p className="text-muted-foreground">Masuk ke akun JDConnect Anda</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -130,11 +130,17 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              className="w-full h-12 text-base btn-primary"
+              className="w-full h-12 text-base font-semibold shadow-glow"
               disabled={isLoading}
-              loading={isLoading}
             >
-              {isLoading ? "Memproses..." : "Masuk"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Memproses...
+                </>
+              ) : (
+                "Masuk"
+              )}
             </Button>
           </form>
 
