@@ -1,7 +1,7 @@
 export const BRAND = {
   name: "JDConnect",
   tagline: "Platform Digital Terhubung",
-  description: "Solusi lengkap untuk kebutuhan digital Anda - cepat, aman, dan terintegrasi.",
+  description: "Solusi lengkap untuk kebutuhan digital Anda - cepat, aman, dan terintegrasi. jdconnect.id",
   logo: null,
   primaryColor: "#3B82F6", // Blue for connectivity
   secondaryColor: "#10B981", // Green for success

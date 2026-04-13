@@ -10,7 +10,7 @@ async function bootstrap() {
   app.use(helmet());
   
   // Enable CORS for frontend
-  const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:4001,http://localhost:3000')
+  const allowedOrigins = (process.env.FRONTEND_URL ?? 'https://jdconnect.id,http://localhost:4001,http://localhost:3000')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);

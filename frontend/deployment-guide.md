@@ -10,13 +10,15 @@
 ## Frontend Deployment (Vercel - Full SSR)
 1. `npm install`
 2. `npm run build`
-3. `vercel --prod`
+3. `vercel --prod
+
+**Domain Production**: https://jdconnect.id (Frontend) & https://api.jdconnect.id (Backend API)`
 
 **Catatan penting**: Sekarang menggunakan full Server-Side Rendering (SSR). Tidak ada folder `out/` atau static export lagi. Semua halaman dirender di server untuk performa dan SEO yang lebih baik.
 
 Environment Variables:
 ```
-NEXT_PUBLIC_API_BASE_URL=https://api.jdconnect.com
+NEXT_PUBLIC_API_BASE_URL=https://api.jdconnect.id
 ```
 
 ## Backend Deployment (Railway)
