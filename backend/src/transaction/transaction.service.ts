@@ -1,14 +1,32 @@
-import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Transaction, TransactionStatus, TransactionType } from './entities/transaction.entity';
+import {
+  Transaction,
+  TransactionStatus,
+  TransactionType,
+  TransactionChannel,
+  PaymentStatus,
+} from './entities/transaction.entity';
 import { Product } from '../product/entities/product.entity';
 import { TaxService } from '../tax/tax.service';
 import { UserService } from '../user/user.service';
 import { BalanceChangeType } from '../user/entities/balance-history.entity';
+import { SupplierService } from '../supplier/supplier.service';
+import { PaymentService } from '../payment/payment.service';
+import { NotificationService } from '../notification/notification.service';
+import { SupplierTopupResult } from '../supplier/adapters/supplier-adapter.interface';
 
 @Injectable()
 export class TransactionService {
+  private readonly logger = new Logger(TransactionService.name);
+
   constructor(
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
@@ -17,84 +35,301 @@ export class TransactionService {
     private taxService: TaxService,
     private userService: UserService,
     private dataSource: DataSource,
+    @Inject(forwardRef(() => SupplierService))
+    private supplierService: SupplierService,
+    @Inject(forwardRef(() => PaymentService))
+    private paymentService: PaymentService,
+    private notificationService: NotificationService,
   ) {}
 
+  // ---------------------------------------------------------------------------
+  // BALANCE FLOW (logged-in user pays from wallet)
+  // ---------------------------------------------------------------------------
   async create(createTransactionDto: any, userId: string): Promise<Transaction> {
     const invoiceNumber = this.generateInvoiceNumber();
 
-    // Idempotency check (using client_ref if provided in metadata)
     const clientRef = createTransactionDto.metadata?.client_ref;
     if (clientRef) {
       const existing = await this.transactionRepository.findOne({
         where: { metadata: { client_ref: clientRef } as any },
       });
-      if (existing) {
-        return existing;
-      }
+      if (existing) return existing;
     }
 
-    // Fetch product
     const product = await this.productRepository.findOne({
       where: { id: createTransactionDto.productId },
     });
-    if (!product) {
-      throw new BadRequestException('Product not found');
-    }
+    if (!product) throw new BadRequestException('Product not found');
+    if (!product.isActive) throw new BadRequestException('Product is not active');
+
     const quantity = createTransactionDto.quantity ?? 1;
-    // Get active tax rate
     const taxRate = await this.taxService.getActiveTaxRate();
-    // Compute amounts
-    const baseAmount = product.denomination * quantity; // amount before tax
+    const baseAmount = Number(product.denomination) * quantity;
     const taxAmount = baseAmount * (taxRate / 100);
-    const price = baseAmount + taxAmount; // price includes tax
+    const price = Number(product.price) * quantity; // selling price already set per product
 
-    return await this.dataSource.transaction(async (manager) => {
-      // 1. Deduct balance first (atomically)
-      try {
-        await this.userService.updateBalance(
-          userId,
-          -price, // Negative amount for deduction
-          BalanceChangeType.TRANSACTION,
-          invoiceNumber,
-          `Transaction for ${product.name} to ${createTransactionDto.phoneNumber}`,
-        );
-      } catch (error) {
-        if (error instanceof BadRequestException && error.message === 'Insufficient balance') {
-          throw new BadRequestException('Insufficient balance to perform this transaction');
-        }
-        throw error;
-      }
+    const saved = await this.dataSource.transaction(async (manager) => {
+      await this.userService.updateBalance(
+        userId,
+        -price,
+        BalanceChangeType.TRANSACTION,
+        invoiceNumber,
+        `Transaction for ${product.name} to ${createTransactionDto.phoneNumber}`,
+      );
 
-      // 2. Create transaction record
-      const transactionData: Partial<Transaction> = {
+      const transaction = manager.create(Transaction, {
         invoiceNumber,
         userId,
-        type: (<any>product.category) as TransactionType,
+        channel: TransactionChannel.BALANCE,
+        type: product.category as unknown as TransactionType,
         productId: product.id,
         provider: product.provider,
         phoneNumber: createTransactionDto.phoneNumber,
         amount: baseAmount,
-        price: price,
+        price,
         taxRate,
         taxAmount,
-        paymentMethod: createTransactionDto.paymentMethod || 'BALANCE',
+        paymentMethod: 'BALANCE',
+        paymentStatus: PaymentStatus.PAID,
+        paidAt: new Date(),
         notes: createTransactionDto.notes,
         metadata: createTransactionDto.metadata || {},
-        status: TransactionStatus.PROCESSING, // H2H usually goes straight to processing
-      };
-
-      const transaction = manager.create(Transaction, transactionData);
-      const savedTransaction = await manager.save(transaction);
-
-      // TODO: Here you would typically call the upstream supplier API
-      // For now, we'll just simulate success after a delay or keep it processing
-      
-      return savedTransaction;
+        status: TransactionStatus.PENDING,
+      } as Partial<Transaction>);
+      return manager.save(transaction);
     });
+
+    // Balance already settled -> execute the top-up immediately.
+    return this.executeTopup(saved.id);
   }
 
+  // ---------------------------------------------------------------------------
+  // GATEWAY / GUEST FLOW (loginless — pay via Midtrans, no wallet)
+  // ---------------------------------------------------------------------------
+  async createGuestOrder(dto: {
+    productId: string;
+    phoneNumber: string;
+    customerEmail?: string;
+    customerName?: string;
+    userId?: string;
+  }): Promise<{ transaction: Transaction; payment: { token?: string; redirectUrl?: string; gateway: string } }> {
+    const product = await this.productRepository.findOne({ where: { id: dto.productId } });
+    if (!product) throw new BadRequestException('Product not found');
+    if (!product.isActive) throw new BadRequestException('Product is not active');
+
+    const invoiceNumber = this.generateInvoiceNumber();
+    const taxRate = await this.taxService.getActiveTaxRate();
+    const baseAmount = Number(product.denomination);
+    const taxAmount = baseAmount * (taxRate / 100);
+    const price = Number(product.price);
+
+    let transaction = this.transactionRepository.create({
+      invoiceNumber,
+      userId: dto.userId,
+      channel: TransactionChannel.GATEWAY,
+      type: product.category as unknown as TransactionType,
+      productId: product.id,
+      provider: product.provider,
+      phoneNumber: dto.phoneNumber,
+      customerEmail: dto.customerEmail,
+      customerName: dto.customerName,
+      amount: baseAmount,
+      price,
+      taxRate,
+      taxAmount,
+      paymentStatus: PaymentStatus.PENDING,
+      status: TransactionStatus.PENDING,
+      metadata: {},
+    } as Partial<Transaction>);
+    transaction = await this.transactionRepository.save(transaction);
+
+    const charge = await this.paymentService.createCharge({
+      orderId: invoiceNumber,
+      amount: price,
+      customerName: dto.customerName,
+      customerEmail: dto.customerEmail,
+      customerPhone: dto.phoneNumber,
+      itemName: product.name,
+    });
+
+    await this.transactionRepository.update(transaction.id, {
+      paymentMethod: charge.gateway,
+      paymentToken: charge.token,
+      paymentRedirectUrl: charge.redirectUrl,
+    });
+
+    return {
+      transaction: (await this.findById(transaction.id))!,
+      payment: { token: charge.token, redirectUrl: charge.redirectUrl, gateway: charge.gateway },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // PAYMENT WEBHOOK -> mark paid -> execute top-up
+  // ---------------------------------------------------------------------------
+  async handlePaymentResult(result: {
+    orderId: string;
+    paid: boolean;
+    failed: boolean;
+    pending: boolean;
+    paymentMethod?: string;
+  }): Promise<void> {
+    const trx = await this.findByInvoiceNumber(result.orderId);
+    if (!trx) {
+      this.logger.warn(`Payment webhook for unknown order ${result.orderId}`);
+      return;
+    }
+    if (trx.paymentStatus === PaymentStatus.PAID) return; // idempotent
+
+    if (result.failed) {
+      await this.transactionRepository.update(trx.id, {
+        paymentStatus: PaymentStatus.FAILED,
+        status: TransactionStatus.FAILED,
+      });
+      return;
+    }
+    if (!result.paid) {
+      await this.transactionRepository.update(trx.id, { paymentStatus: PaymentStatus.PENDING });
+      return;
+    }
+
+    await this.transactionRepository.update(trx.id, {
+      paymentStatus: PaymentStatus.PAID,
+      paidAt: new Date(),
+      paymentMethod: result.paymentMethod || trx.paymentMethod,
+    });
+    await this.executeTopup(trx.id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // SUPPLIER EXECUTION
+  // ---------------------------------------------------------------------------
+  async executeTopup(transactionId: string): Promise<Transaction> {
+    const trx = await this.findById(transactionId);
+    if (!trx) throw new BadRequestException('Transaction not found');
+    if (trx.paymentStatus !== PaymentStatus.PAID) {
+      this.logger.warn(`Skip top-up for unpaid order ${trx.invoiceNumber}`);
+      return trx;
+    }
+    if (trx.status === TransactionStatus.SUCCESS) return trx; // idempotent
+
+    const sku = trx.product?.sku;
+    if (!sku) {
+      await this.transactionRepository.update(trx.id, {
+        status: TransactionStatus.FAILED,
+        supplierMessage: 'Missing product SKU',
+      });
+      return (await this.findById(trx.id))!;
+    }
+
+    const refId = trx.supplierRef || `${trx.invoiceNumber}`;
+    await this.transactionRepository.update(trx.id, {
+      status: TransactionStatus.PROCESSING,
+      supplierDriver: this.supplierService.driverName,
+      supplierRef: refId,
+      topupAttempts: (trx.topupAttempts ?? 0) + 1,
+    });
+
+    let result: SupplierTopupResult;
+    try {
+      result = await this.supplierService.topUp({
+        sku,
+        customerNo: trx.phoneNumber,
+        refId,
+      });
+    } catch (err: any) {
+      this.logger.error(`Supplier top-up error for ${trx.invoiceNumber}: ${err.message}`);
+      // Leave as PROCESSING; a callback or status poll can still settle it.
+      await this.transactionRepository.update(trx.id, {
+        supplierMessage: `Supplier error: ${err.message}`,
+      });
+      return (await this.findById(trx.id))!;
+    }
+
+    return this.settle(trx.id, result);
+  }
+
+  /** Apply a supplier callback identified by ref id. */
+  async applySupplierResult(result: SupplierTopupResult): Promise<void> {
+    const trx = await this.transactionRepository.findOne({
+      where: { supplierRef: result.refId },
+      relations: ['product'],
+    });
+    if (!trx) {
+      this.logger.warn(`Supplier callback for unknown ref ${result.refId}`);
+      return;
+    }
+    await this.settle(trx.id, result);
+  }
+
+  /** Map a supplier result onto the transaction + handle refunds. */
+  private async settle(transactionId: string, result: SupplierTopupResult): Promise<Transaction> {
+    const trx = await this.findById(transactionId);
+    if (!trx) throw new BadRequestException('Transaction not found');
+
+    if (result.status === 'success') {
+      await this.transactionRepository.update(trx.id, {
+        status: TransactionStatus.SUCCESS,
+        serialNumber: result.serial,
+        supplierMessage: result.message,
+      });
+      this.notify(trx, 'success');
+    } else if (result.status === 'failed') {
+      await this.transactionRepository.update(trx.id, {
+        status: TransactionStatus.FAILED,
+        supplierMessage: result.message || 'Top-up failed',
+      });
+      await this.refundIfNeeded(trx);
+      this.notify(trx, 'failed');
+    } else {
+      await this.transactionRepository.update(trx.id, {
+        status: TransactionStatus.PROCESSING,
+        supplierMessage: result.message,
+      });
+    }
+    return (await this.findById(trx.id))!;
+  }
+
+  /** Refund: wallet credit for balance orders, mark refunded for gateway orders. */
+  private async refundIfNeeded(trx: Transaction): Promise<void> {
+    if (trx.channel === TransactionChannel.BALANCE && trx.userId) {
+      try {
+        await this.userService.updateBalance(
+          trx.userId,
+          Number(trx.price),
+          BalanceChangeType.REFUND,
+          trx.invoiceNumber,
+          `Refund for failed top-up ${trx.invoiceNumber}`,
+        );
+        await this.transactionRepository.update(trx.id, { paymentStatus: PaymentStatus.REFUNDED });
+      } catch (err: any) {
+        this.logger.error(`Refund failed for ${trx.invoiceNumber}: ${err.message}`);
+      }
+    } else {
+      // Gateway order: flag for manual/auto refund via gateway.
+      await this.transactionRepository.update(trx.id, { paymentStatus: PaymentStatus.REFUNDED });
+    }
+  }
+
+  private notify(trx: Transaction, status: string): void {
+    const email = trx.customerEmail;
+    if (!email) return;
+    this.notificationService
+      .sendTransactionEmail(email, {
+        invoiceNumber: trx.invoiceNumber,
+        product: trx.product?.name || trx.provider,
+        phoneNumber: trx.phoneNumber,
+        amount: Number(trx.price),
+        status,
+      })
+      .catch(() => undefined);
+  }
+
+  // ---------------------------------------------------------------------------
+  // QUERIES
+  // ---------------------------------------------------------------------------
   async findByUserId(userId: string): Promise<Transaction[]> {
-    return await this.transactionRepository.find({
+    return this.transactionRepository.find({
       where: { userId },
       relations: ['product'],
       order: { createdAt: 'DESC' },
@@ -102,17 +337,23 @@ export class TransactionService {
   }
 
   async findById(id: string): Promise<Transaction | null> {
-    return await this.transactionRepository.findOne({
-      where: { id },
+    return this.transactionRepository.findOne({ where: { id }, relations: ['product'] });
+  }
+
+  async findByInvoiceNumber(invoiceNumber: string): Promise<Transaction | null> {
+    return this.transactionRepository.findOne({
+      where: { invoiceNumber },
       relations: ['product'],
     });
   }
 
-  async findByInvoiceNumber(invoiceNumber: string): Promise<Transaction | null> {
-    return await this.transactionRepository.findOne({
-      where: { invoiceNumber },
-      relations: ['product'],
-    });
+  /** Public guest tracking: invoice + last 4 digits of phone must match. */
+  async trackGuestOrder(invoiceNumber: string, phoneLast4: string): Promise<Transaction> {
+    const trx = await this.findByInvoiceNumber(invoiceNumber);
+    if (!trx || !trx.phoneNumber.endsWith(phoneLast4)) {
+      throw new BadRequestException('Order not found');
+    }
+    return trx;
   }
 
   async updateStatus(id: string, status: TransactionStatus): Promise<Transaction | null> {
@@ -132,7 +373,7 @@ export class TransactionService {
   }
 
   async getTransactionsByType(type: TransactionType): Promise<Transaction[]> {
-    return await this.transactionRepository.find({
+    return this.transactionRepository.find({
       where: { type },
       relations: ['product'],
       order: { createdAt: 'DESC' },
@@ -140,10 +381,18 @@ export class TransactionService {
   }
 
   async getTransactionsByStatus(status: TransactionStatus): Promise<Transaction[]> {
-    return await this.transactionRepository.find({
+    return this.transactionRepository.find({
       where: { status },
       relations: ['product'],
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findAllRecent(limit = 100): Promise<Transaction[]> {
+    return this.transactionRepository.find({
+      relations: ['product'],
+      order: { createdAt: 'DESC' },
+      take: limit,
     });
   }
 }

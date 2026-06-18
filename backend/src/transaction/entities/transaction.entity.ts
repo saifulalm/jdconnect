@@ -17,6 +17,21 @@ export enum TransactionType {
   EWALLET = 'ewallet',
 }
 
+// How the order is funded.
+export enum TransactionChannel {
+  BALANCE = 'balance', // logged-in user pays from wallet
+  GATEWAY = 'gateway', // guest/user pays via payment gateway (Midtrans)
+}
+
+export enum PaymentStatus {
+  UNPAID = 'unpaid',
+  PENDING = 'pending',
+  PAID = 'paid',
+  EXPIRED = 'expired',
+  REFUNDED = 'refunded',
+  FAILED = 'failed',
+}
+
 @Entity('transactions')
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
@@ -25,8 +40,23 @@ export class Transaction {
   @Column()
   invoiceNumber: string;
 
-  @Column()
-  userId: string;
+  // Nullable: guest (loginless) orders have no user account.
+  @Column({ nullable: true })
+  userId?: string;
+
+  @Column({
+    type: 'simple-enum',
+    enum: TransactionChannel,
+    default: TransactionChannel.GATEWAY,
+  })
+  channel: TransactionChannel;
+
+  // Guest contact details (loginless checkout).
+  @Column({ nullable: true })
+  customerEmail?: string;
+
+  @Column({ nullable: true })
+  customerName?: string;
 
   @Column({
     type: 'simple-enum',
@@ -67,6 +97,39 @@ export class Transaction {
 
   @Column({ nullable: true })
   externalId: string;
+
+  // Payment gateway state (Midtrans).
+  @Column({
+    type: 'simple-enum',
+    enum: PaymentStatus,
+    default: PaymentStatus.UNPAID,
+  })
+  paymentStatus: PaymentStatus;
+
+  @Column({ nullable: true })
+  paymentToken?: string; // Midtrans Snap token
+
+  @Column({ nullable: true })
+  paymentRedirectUrl?: string;
+
+  @Column({ nullable: true })
+  paidAt?: Date;
+
+  // Upstream supplier (H2H) execution state.
+  @Column({ nullable: true })
+  supplierDriver?: string; // digiflazz | mock | ...
+
+  @Column({ nullable: true })
+  supplierRef?: string; // ref_id sent to supplier
+
+  @Column({ nullable: true })
+  serialNumber?: string; // SN / token returned by supplier
+
+  @Column({ nullable: true })
+  supplierMessage?: string;
+
+  @Column({ default: 0 })
+  topupAttempts: number;
 
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, any>;

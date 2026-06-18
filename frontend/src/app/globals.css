@@ -2,92 +2,158 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Design tokens — modern minimalist. Light default, .dark override.
+   ========================================================================== */
 :root {
-  --radius: 0.75rem;
-  --background: #020617;
-  --foreground: #F8FAFC;
-  --card: #0F172A;
-  --primary: #3B82F6;
-  --primary-hover: #60A5FA;
-  --accent: #8B5CF6;
-  --border: #1E293B;
+  --radius: 0.875rem;
+
+  --background: #fbfbfd;
+  --foreground: #0b0b0f;
+
+  --card: #ffffff;
+  --card-foreground: #0b0b0f;
+  --popover: #ffffff;
+  --popover-foreground: #0b0b0f;
+
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f4f4f6;
+  --secondary-foreground: #18181b;
+
+  --muted: #f4f4f6;
+  --muted-foreground: #6b7280;
+
+  --accent: #8b5cf6;
+  --accent-foreground: #ffffff;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: #e6e6ea;
+  --input: #e6e6ea;
+  --ring: #4f46e5;
+
+  --success: #10b981;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  --error: #ef4444;
+}
+
+.dark {
+  --background: #08080b;
+  --foreground: #f7f7f8;
+
+  --card: #111114;
+  --card-foreground: #f7f7f8;
+  --popover: #111114;
+  --popover-foreground: #f7f7f8;
+
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --primary-foreground: #ffffff;
+
+  --secondary: #1a1a1f;
+  --secondary-foreground: #f7f7f8;
+
+  --muted: #1a1a1f;
+  --muted-foreground: #9ca3af;
+
+  --accent: #a78bfa;
+  --accent-foreground: #0b0b0f;
+
+  --destructive: #f87171;
+  --destructive-foreground: #0b0b0f;
+
+  --border: #232329;
+  --input: #232329;
+  --ring: #6366f1;
 }
 
 @layer base {
+  * {
+    border-color: var(--border);
+  }
   body {
     background-color: var(--background);
     color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 22%, transparent);
   }
 }
 
+/* ==========================================================================
+   Utilities (kept compatible with existing pages, retuned minimalist)
+   ========================================================================== */
 @layer utilities {
   .glass {
-    background: rgba(15, 23, 42, 0.85);
-    backdrop-filter: blur(32px) saturate(180%);
-    -webkit-backdrop-filter: blur(32px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 8px 32px -4px rgb(0 0 0 / 0.6), inset 0 1px 0 rgba(255,255,255,0.2);
+    background: color-mix(in srgb, var(--card) 72%, transparent);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   }
 
   .glass-dark {
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--card) 85%, transparent);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
   }
 
   .gradient-text {
-    background: linear-gradient(to right, #3b82f6, #a78bfa, #f472b6);
+    background: linear-gradient(100deg, var(--primary), var(--accent));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
+  /* Subtle ambient backdrop — replaces the old neon mesh. */
   .mesh-gradient {
-    background: 
-      radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.9) 0%, transparent 35%),
-      radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.85) 0%, transparent 40%),
-      radial-gradient(circle at 40% 80%, rgba(236, 72, 153, 0.8) 0%, transparent 45%),
-      radial-gradient(circle at 85% 70%, rgba(167, 139, 250, 0.75) 0%, transparent 40%);
-    background-color: #020617;
     position: relative;
-    overflow: hidden;
+    background-color: var(--background);
+    background-image:
+      radial-gradient(40rem 40rem at 12% -10%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%),
+      radial-gradient(36rem 36rem at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%);
   }
 
-  .mesh-gradient::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.15) 0%, transparent 60%);
-    z-index: 1;
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%);
+    mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%);
   }
 
-  .mesh-gradient::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
-    animation: shimmer 8s linear infinite;
-    z-index: 2;
-  }
-
-  @keyframes shimmer {
-    0% { transform: translateX(-150%); }
-    100% { transform: translateX(450%); }
+  .shadow-soft {
+    box-shadow:
+      0 1px 2px -1px rgb(0 0 0 / 0.06),
+      0 8px 24px -12px rgb(0 0 0 / 0.12);
   }
 
   .shadow-glow {
-    box-shadow: 
-      0 0 60px -10px rgb(139 92 246 / 0.8),
-      0 25px 70px -15px rgb(0 0 0 / 0.8),
-      inset 0 2px 0 rgba(255,255,255,0.2);
+    box-shadow:
+      0 1px 2px -1px rgb(0 0 0 / 0.08),
+      0 18px 40px -20px color-mix(in srgb, var(--primary) 55%, transparent);
   }
 
   .animate-float {
-    animation: float 5s ease-in-out infinite;
+    animation: float 6s ease-in-out infinite;
   }
-
   @keyframes float {
     0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-20px); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .card-hover {
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 1px 2px -1px rgb(0 0 0 / 0.06), 0 16px 40px -16px rgb(0 0 0 / 0.18);
   }
 }

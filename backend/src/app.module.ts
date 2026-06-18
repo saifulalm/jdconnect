@@ -14,6 +14,8 @@ import { NotificationModule } from './notification/notification.module';
 import { AdminModule } from './admin/admin.module';
 import { ProductModule } from './product/product.module';
 import { TaxModule } from './tax/tax.module';
+import { SupplierModule } from './supplier/supplier.module';
+import { OtpModule } from './otp/otp.module';
 
 @Module({
   imports: [
@@ -81,6 +83,8 @@ import { TaxModule } from './tax/tax.module';
     AdminModule,
     ProductModule,
     TaxModule,
+    SupplierModule,
+    OtpModule,
   ],
   controllers: [AppController],
   providers: [AppService],
