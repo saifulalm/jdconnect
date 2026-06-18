@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
+import { INestApplicationContext, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { UserService } from './user/user.service';
 import { ProductService } from './product/product.service';
@@ -9,15 +9,13 @@ import { BalanceChangeType } from './user/entities/balance-history.entity';
 
 /**
  * Idempotent seed for local testing / demos.
- * Run with: npm run seed
  *
  * Dummy logins:
  *   admin@jdconnect.id / Admin123!   (role: admin)
  *   demo@jdconnect.id  / Demo123!    (role: customer, Rp 1.000.000 balance)
  */
-async function bootstrap() {
+export async function seedData(app: INestApplicationContext): Promise<void> {
   const logger = new Logger('Seed');
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn', 'log'] });
   const users = app.get(UserService);
   const products = app.get(ProductService);
 
@@ -41,6 +39,9 @@ async function bootstrap() {
   }
 
   // --- Products ------------------------------------------------------------
+  const existingProducts = await products.findAll();
+  const existingSkus = new Set(existingProducts.map((p) => p.sku));
+
   const operators: Array<[string, ProductCategory]> = [
     ['Telkomsel', ProductCategory.PULSA],
     ['Indosat', ProductCategory.PULSA],
@@ -50,27 +51,24 @@ async function bootstrap() {
   ];
   const denoms = [5000, 10000, 25000, 50000, 100000];
 
-  let created = 0;
+  const toCreate: Array<Parameters<ProductService['create']>[0]> = [];
   for (const [provider, category] of operators) {
     for (const d of denoms) {
       const sku = `${provider.toUpperCase()}_${d / 1000}K`;
-      const all = await products.findAll();
-      if (all.some((p) => p.sku === sku)) continue;
-      await products.create({
+      if (existingSkus.has(sku)) continue;
+      toCreate.push({
         sku,
         name: `${provider} ${d / 1000}K`,
         category,
         provider,
         denomination: d,
-        price: d + 1500, // demo selling price (margin)
+        price: d + 1500,
         isActive: true,
         description: `Pulsa ${provider} ${d.toLocaleString('id-ID')}`,
       });
-      created++;
     }
   }
 
-  // A couple of data + PLN demo products.
   const extras = [
     { sku: 'TELKOMSEL_DATA_2GB', name: 'Telkomsel Data 2GB', category: ProductCategory.DATA, provider: 'Telkomsel', denomination: 2048, price: 22000 },
     { sku: 'XL_DATA_5GB', name: 'XL Data 5GB', category: ProductCategory.DATA, provider: 'XL', denomination: 5120, price: 35000 },
@@ -78,20 +76,30 @@ async function bootstrap() {
     { sku: 'PLN_50K', name: 'Token PLN 50K', category: ProductCategory.PLN, provider: 'PLN', denomination: 50000, price: 51500 },
   ];
   for (const e of extras) {
-    const all = await products.findAll();
-    if (all.some((p) => p.sku === e.sku)) continue;
-    await products.create({ ...e, isActive: true });
-    created++;
+    if (existingSkus.has(e.sku)) continue;
+    toCreate.push({ ...e, isActive: true });
   }
 
-  logger.log(`Seeded ${created} products`);
-  logger.log('Done. Dummy logins: admin@jdconnect.id/Admin123!  demo@jdconnect.id/Demo123!');
-  await app.close();
-  process.exit(0);
+  for (const p of toCreate) await products.create(p);
+  logger.log(`Seeded ${toCreate.length} products (existing kept)`);
+  logger.log('Dummy logins -> admin@jdconnect.id/Admin123!  |  demo@jdconnect.id/Demo123!');
 }
 
-bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+// Allow running standalone: `npm run seed`
+if (require.main === module) {
+  (async () => {
+    const app = await NestFactory.createApplicationContext(AppModule, {
+      logger: ['error', 'warn', 'log'],
+    });
+    try {
+      await seedData(app);
+    } finally {
+      await app.close();
+    }
+    process.exit(0);
+  })().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
