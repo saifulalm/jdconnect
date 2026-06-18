@@ -1,157 +1,145 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
-import { apiUrl } from "@/lib/api";
-import { Mail, Lock, Loader2, ArrowLeft, Zap } from "lucide-react";
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { Mail, Lock, Loader2, ArrowLeft, Eye, EyeOff, AlertCircle } from "lucide-react"
+import { BrandMark } from "@/components/brand-mark"
+import { apiUrl } from "@/lib/api"
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
-  const [error, setError] = useState("");
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
+  const [showPw, setShowPw] = useState(false)
+  const [form, setForm] = useState({ email: "", password: "" })
+  const [error, setError] = useState("")
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError("");
-
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setIsLoading(true)
+    setError("")
     try {
-      const response = await fetch(apiUrl("/auth/login"), {
+      const res = await fetch(apiUrl("/auth/login"), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem("token", data.access_token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        router.push("/dashboard");
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        localStorage.setItem("token", data.access_token)
+        localStorage.setItem("user", JSON.stringify(data.user))
+        router.push("/dashboard")
       } else {
-        setError(data.message || "Login gagal. Periksa email dan password Anda.");
+        setError(data.message || "Login gagal. Periksa email dan password.")
       }
     } catch {
-      setError("Tidak dapat terhubung ke server. Pastikan backend sedang berjalan.");
+      setError("Tidak dapat terhubung ke server. Pastikan backend berjalan.")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen mesh-gradient flex items-center justify-center p-4">
-      {/* Background Decorative Elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen mesh-gradient flex flex-col">
+      <header className="container mx-auto px-4 h-16 flex items-center justify-between">
+        <BrandMark />
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Beranda
+        </Link>
+      </header>
 
-      {/* Back Button */}
-      <Link 
-        href="/" 
-        className="absolute top-6 left-6 flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-all group"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform" />
-        Kembali
-      </Link>
-
-      <div className="w-full max-w-md relative z-10 animate-slide-up">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/30 blur-xl rounded-full group-hover:bg-primary/50 transition-all duration-300" />
-              <Zap className="relative h-10 w-10 text-primary" />
-            </div>
-            <span className="text-2xl font-bold tracking-tight">JDConnect</span>
-          </Link>
-        </div>
-        
-        <Card className="glass border-white/10 p-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2 text-white">Selamat Datang</h1>
-            <p className="text-muted-foreground">Masuk ke akun JDConnect Anda</p>
+      <main className="flex-1 grid place-items-center px-4 py-8">
+        <div className="w-full max-w-sm animate-slide-up">
+          <div className="text-center mb-6 space-y-1.5">
+            <h1 className="text-2xl font-semibold tracking-tight">Selamat datang kembali</h1>
+            <p className="text-sm text-muted-foreground">Masuk ke akun JDConnect kamu</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-            
-            <div className="space-y-3">
-              <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="nama@email.com"
-                  className="pl-12 h-12"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
-                <Link href="#" className="text-sm text-primary hover:text-primary-hover">
-                  Lupa password?
-                </Link>
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Masukkan password"
-                  className="pl-12 h-12"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full h-12 text-base font-semibold shadow-glow"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Memproses...
-                </>
-              ) : (
-                "Masuk"
+          <div className="rounded-3xl border border-border bg-card shadow-soft p-6 sm:p-7">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-xl px-3 py-2.5">
+                  <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+                </div>
               )}
-            </Button>
-          </form>
 
-          <div className="mt-8 text-center text-sm text-muted-foreground">
-            Belum punya akun?{" "}
-            <Link href="/register" className="text-primary hover:text-primary-hover font-semibold">
-              Daftar sekarang
-            </Link>
+              <Field label="Email">
+                <Mail className="auth-icon" />
+                <input
+                  type="email"
+                  required
+                  placeholder="nama@email.com"
+                  className="input-field !pl-10"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                />
+              </Field>
+
+              <Field
+                label="Password"
+                right={<Link href="#" className="text-xs text-primary hover:underline">Lupa password?</Link>}
+              >
+                <Lock className="auth-icon" />
+                <input
+                  type={showPw ? "text" : "password"}
+                  required
+                  placeholder="Masukkan password"
+                  className="input-field !pl-10 !pr-10"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Toggle password"
+                >
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </Field>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full h-12 rounded-2xl bg-primary text-primary-foreground font-semibold shadow-glow disabled:opacity-50 active:scale-[0.99] transition-all inline-flex items-center justify-center gap-2"
+              >
+                {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isLoading ? "Memproses..." : "Masuk"}
+              </button>
+            </form>
+
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              Belum punya akun?{" "}
+              <Link href="/register" className="text-primary font-medium hover:underline">Daftar</Link>
+            </p>
           </div>
-        </Card>
-      </div>
+
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Mau beli tanpa daftar?{" "}
+            <Link href="/" className="text-foreground hover:underline">Isi ulang langsung →</Link>
+          </p>
+        </div>
+      </main>
     </div>
-  );
+  )
+}
+
+function Field({
+  label,
+  right,
+  children,
+}: {
+  label: string
+  right?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium">{label}</label>
+        {right}
+      </div>
+      <div className="relative">{children}</div>
+    </div>
+  )
 }
