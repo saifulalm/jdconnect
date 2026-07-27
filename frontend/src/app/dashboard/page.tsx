@@ -1,302 +1,306 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BrandMark } from "@/components/brand-mark";
-import { BRAND } from "@/lib/brand";
-import { apiUrl } from "@/lib/api";
-import { 
-  LogOut, 
-  Smartphone, 
-  Wifi, 
-  Zap, 
-  Gamepad2, 
-  Wallet, 
-  Clock, 
-  ChevronRight, 
-  LayoutDashboard, 
-  History, 
-  Settings, 
-  Key, 
-  CreditCard,
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { apiUrl, getProducts, formatIDR, type Product } from "@/lib/api"
+import {
+  Smartphone,
+  Wifi,
+  Zap,
+  Gamepad2,
+  Wallet,
+  Clock,
+  ChevronRight,
+  Key,
   Plus,
   TrendingUp,
-  Search,
-  User as UserIcon,
-  Bell
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
+  ShieldCheck,
+  Loader2,
+} from "lucide-react"
 
 interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  balance: number;
+  id: string
+  name: string
+  email: string
+  role: string
+  balance: number
+}
+
+interface Trx {
+  id: string
+  invoiceNumber: string
+  status: string
+  price: number
+  createdAt: string
+  product?: { name?: string }
+  provider?: string
+}
+
+const CATEGORIES = [
+  { id: "pulsa", name: "Pulsa", icon: Smartphone },
+  { id: "data", name: "Data", icon: Wifi },
+  { id: "pln", name: "PLN", icon: Zap },
+  { id: "game", name: "Game", icon: Gamepad2 },
+  { id: "ewallet", name: "E-Wallet", icon: Wallet },
+]
+
+const STATUS_TONE: Record<string, string> = {
+  success: "bg-success/10 text-success",
+  processing: "bg-info/10 text-info",
+  pending: "bg-warning/10 text-warning",
+  failed: "bg-destructive/10 text-destructive",
+  cancelled: "bg-muted text-muted-foreground",
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [products, setProducts] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState("pulsa");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isProductsLoading, setIsProductsLoading] = useState(false);
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [transactions, setTransactions] = useState<Trx[]>([])
+  const [category, setCategory] = useState("pulsa")
+  const [isLoading, setIsLoading] = useState(true)
+  const [productsLoading, setProductsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const userData = localStorage.getItem("user");
-    if (!token || !userData) {
-      router.push("/login");
-      return;
+    const token = localStorage.getItem("token")
+    if (!token) {
+      router.push("/login")
+      return
     }
 
-    const fetchUserProfile = async () => {
-      try {
-        const response = await fetch(apiUrl("/users/profile"), {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        const data = await response.json();
-        if (data.status === 'success') {
-          setUser(data.data);
-          localStorage.setItem("user", JSON.stringify(data.data));
+    const auth = { Authorization: `Bearer ${token}` }
+
+    fetch(apiUrl("/users/profile"), { headers: auth })
+      .then((r) => r.json())
+      .then((data) => {
+        const u = data?.data ?? data
+        if (u?.id) {
+          setUser(u)
+          localStorage.setItem("user", JSON.stringify(u))
+        } else {
+          router.push("/login")
         }
-      } catch (error) {
-        console.error("Failed to fetch profile:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      })
+      .catch(() => router.push("/login"))
+      .finally(() => setIsLoading(false))
 
-    const fetchProducts = async () => {
-      setIsProductsLoading(true);
-      try {
-        const response = await fetch(apiUrl("/products"), {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        const data = await response.json();
-        if (data.status === 'success' || Array.isArray(data)) {
-          const prodData = Array.isArray(data) ? data : data.data || data;
-          setProducts(prodData);
-        }
-      } catch (error) {
-        console.error("Failed to fetch products:", error);
-      } finally {
-        setIsProductsLoading(false);
-      }
-    };
+    fetch(apiUrl("/transactions"), { headers: auth })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => setTransactions(Array.isArray(list) ? list : []))
+      .catch(() => setTransactions([]))
+  }, [router])
 
-    fetchUserProfile();
-    fetchProducts();
-  }, [router]);
+  useEffect(() => {
+    setProductsLoading(true)
+    getProducts(category)
+      .then((p) => setProducts(p.filter((x) => x.isActive)))
+      .catch(() => setProducts([]))
+      .finally(() => setProductsLoading(false))
+  }, [category])
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/");
-  };
+  const stats = useMemo(() => {
+    const now = new Date()
+    const thisMonth = transactions.filter((t) => {
+      const d = new Date(t.createdAt)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    })
+    const spent = transactions
+      .filter((t) => t.status === "success")
+      .reduce((sum, t) => sum + Number(t.price || 0), 0)
+    return { total: transactions.length, month: thisMonth.length, spent }
+  }, [transactions])
 
-  const categories = [
-    { id: "pulsa", name: "Pulsa", icon: Smartphone, description: "All operator" },
-    { id: "data", name: "Paket Data", icon: Wifi, description: "Internet cepat" },
-    { id: "pln", name: "Listrik PLN", icon: Zap, description: "Token listrik" },
-    { id: "game", name: "Voucher Game", icon: Gamepad2, description: "Topup game" },
-    { id: "ewallet", name: "E-Wallet", icon: Wallet, description: "Isi saldo" },
-  ];
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
+  const recent = transactions.slice(0, 5)
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen mesh-gradient flex items-center justify-center">
-        <Zap className="h-10 w-10 text-primary animate-pulse" />
+      <div className="min-h-[60vh] grid place-items-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
-    );
+    )
   }
 
   return (
     <div className="p-6 sm:p-8 space-y-8">
-          {/* Top Stats Cards */}
-          <div className="grid md:grid-cols-3 gap-6">
-            <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 overflow-hidden relative group">
-              <div className="absolute top-0 right-0 p-8">
-                <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 group-hover:scale-110 transition-transform duration-500">
-                  <TrendingUp className="h-7 w-7" />
+      {/* Stats */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <StatCard
+          icon={Wallet}
+          label="Saldo Akun"
+          value={formatIDR(Number(user.balance) || 0)}
+          foot={
+            <Button size="sm" variant="outline" className="mt-1" asChild>
+              <Link href="/dashboard/settings"><Plus className="h-4 w-4" /> Top Up</Link>
+            </Button>
+          }
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="Total Transaksi"
+          value={String(stats.total)}
+          foot={<p className="text-xs text-muted-foreground">Bulan ini: {stats.month} · Total belanja: {formatIDR(stats.spent)}</p>}
+        />
+        <StatCard
+          icon={ShieldCheck}
+          label="Status Akun"
+          value="Aktif"
+          foot={
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success bg-success/10 px-2.5 py-1 rounded-full">
+              <span className="size-1.5 rounded-full bg-success animate-pulse" /> Terverifikasi
+            </span>
+          }
+        />
+      </div>
+
+      {/* Products */}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold tracking-tight">Layanan Digital</h2>
+          <div className="flex gap-1 bg-muted p-1 rounded-2xl overflow-x-auto">
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCategory(c.id)}
+                className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
+                  category === c.id
+                    ? "bg-card text-foreground shadow-soft"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <c.icon className="h-4 w-4" /> {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {productsLoading ? (
+          <div className="py-16 grid place-items-center text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : products.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">
+            Tidak ada produk untuk kategori ini.
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {products.map((p) => (
+              <div
+                key={p.id}
+                className="card-hover rounded-2xl border border-border bg-card p-5 space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold tracking-widest uppercase text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                    {p.provider}
+                  </span>
+                  <Zap className="h-4 w-4 text-muted-foreground" />
                 </div>
-              </div>
-              <div className="space-y-4">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Saldo Akun</p>
-                <h2 className="text-4xl font-bold tracking-tight">{formatCurrency(user.balance || 0)}</h2>
-                <div className="flex items-center gap-2 pt-2">
-                  <Button size="sm" className="rounded-xl shadow-glow">
-                    <Plus className="mr-2 h-4 w-4" /> Top Up
+                <div>
+                  <h3 className="font-semibold">{p.name}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Proses instan</p>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-border">
+                  <p className="font-semibold text-primary">{formatIDR(Number(p.price))}</p>
+                  <Button size="icon-sm" className="rounded-xl" onClick={() => router.push("/transaction")}
+                    aria-label={`Beli ${p.name}`}>
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-            </Card>
-
-            <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 overflow-hidden relative group">
-              <div className="absolute top-0 right-0 p-8">
-                <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 group-hover:scale-110 transition-transform duration-500">
-                  <Zap className="h-7 w-7" />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Total Transaksi</p>
-                <h2 className="text-4xl font-bold tracking-tight">0</h2>
-                <p className="text-xs text-slate-500">Bulan ini: 0 transaksi</p>
-              </div>
-            </Card>
-
-            <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 overflow-hidden relative group">
-              <div className="absolute top-0 right-0 p-8">
-                <div className="h-14 w-14 rounded-2xl bg-violet-500/10 flex items-center justify-center text-violet-500 border border-violet-500/20 group-hover:scale-110 transition-transform duration-500">
-                  <Smartphone className="h-7 w-7" />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Status Akun</p>
-                <h2 className="text-4xl font-bold tracking-tight">Aktif</h2>
-                <div className="flex items-center gap-2 text-emerald-500 text-xs font-bold bg-emerald-500/10 px-3 py-1 rounded-full w-fit">
-                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  TERVERIFIKASI
-                </div>
-              </div>
-            </Card>
+            ))}
           </div>
+        )}
+      </section>
 
-          {/* Service Categories */}
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold tracking-tight">Layanan Digital</h2>
-              <div className="flex gap-2 bg-white/5 p-1 rounded-2xl">
-                {categories.map((cat) => (
-                  <Button
-                    key={cat.id}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className={`rounded-xl px-4 h-10 transition-all duration-300 ${
-                      selectedCategory === cat.id 
-                        ? "bg-primary text-white shadow-glow" 
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <cat.icon className="mr-2 h-4 w-4" /> {cat.name}
-                  </Button>
-                ))}
+      {/* Bottom */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Transaksi Terakhir</h3>
+            <Link href="/transactions" className="text-sm text-primary inline-flex items-center hover:underline">
+              Lihat Semua <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          {recent.length === 0 ? (
+            <div className="py-10 text-center space-y-3">
+              <span className="grid place-items-center size-14 rounded-2xl bg-muted text-muted-foreground mx-auto">
+                <Clock className="h-6 w-6" />
+              </span>
+              <div>
+                <p className="font-medium text-sm">Belum ada transaksi</p>
+                <p className="text-xs text-muted-foreground">Mulai transaksi pertama kamu.</p>
               </div>
+              <Button size="sm" asChild>
+                <Link href="/transaction">Beli Sekarang</Link>
+              </Button>
             </div>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {isProductsLoading ? (
-                <div className="col-span-full flex justify-center py-12">
-                  <div className="flex items-center gap-3 text-slate-400">
-                    <Zap className="h-5 w-5 animate-spin" />
-                    Memuat produk...
+          ) : (
+            <ul className="divide-y divide-border">
+              {recent.map((t) => (
+                <li key={t.id} className="py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{t.product?.name || t.provider}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{t.invoiceNumber}</p>
                   </div>
-                </div>
-              ) : products.length > 0 ? (
-                products
-                  .filter(p => !selectedCategory || p.category?.toLowerCase() === selectedCategory || p.category === selectedCategory)
-                  .map((product: any) => (
-                    <Card key={product.id} className="glass-dark border-white/5 rounded-[2rem] overflow-hidden group hover:border-primary/50 transition-all duration-500">
-                      <div className="p-6 space-y-6">
-                        <div className="flex justify-between items-start">
-                          <div className="px-4 py-1.5 rounded-xl text-[10px] font-bold tracking-widest uppercase border border-primary/30 text-primary">
-                            {product.provider}
-                          </div>
-                          <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                            <Zap className="h-5 w-5 text-slate-400 group-hover:text-primary transition-colors" />
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <h3 className="font-bold text-lg mb-1">{product.name}</h3>
-                          <p className="text-xs text-slate-500 font-medium">Stok: {product.stock || 'Ready'} • Instan</p>
-                        </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-medium">{formatIDR(Number(t.price))}</p>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_TONE[t.status] || STATUS_TONE.pending}`}>
+                      {t.status}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-                        <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                          <div className="space-y-0.5">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Harga</p>
-                            <p className="text-xl font-bold text-primary">{formatCurrency(product.price)}</p>
-                          </div>
-                          <Button className="h-12 w-12 rounded-2xl shadow-glow p-0" onClick={() => router.push(`/transaction?product=${product.id}`)}>
-                            <Plus className="h-6 w-6" />
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  ))
-              ) : (
-                <div className="col-span-full py-12 text-center text-slate-400">
-                  Tidak ada produk tersedia saat ini.
-                </div>
-              )}
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">API H2H</h3>
+            <Link href="/dashboard/api" className="text-sm text-primary inline-flex items-center hover:underline">
+              Kelola API <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="rounded-xl border border-border bg-background p-4 flex items-start gap-3">
+            <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary shrink-0">
+              <Key className="h-5 w-5" />
+            </span>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Integrasi untuk reseller</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Buat API key, atur IP whitelist, dan akses endpoint H2H untuk
+                integrasi bisnis kamu.
+              </p>
             </div>
           </div>
-
-          {/* Bottom Section */}
-          <div className="grid lg:grid-cols-2 gap-8">
-            <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold">Transaksi Terakhir</h3>
-                <Button variant="link" className="text-primary p-0" asChild>
-                  <Link href="/transactions">Lihat Semua <ChevronRight className="ml-1 h-4 w-4" /></Link>
-                </Button>
-              </div>
-              <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                <div className="h-20 w-20 rounded-[2rem] bg-white/5 flex items-center justify-center border border-white/5 text-slate-600">
-                  <Clock className="h-10 w-10" />
-                </div>
-                <div className="space-y-1">
-                  <p className="font-bold">Belum ada transaksi</p>
-                  <p className="text-sm text-slate-500">Mulai transaksi pertama Anda sekarang.</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold">Informasi H2H API</h3>
-                <Button variant="link" className="text-primary p-0" asChild>
-                  <Link href="/dashboard/api">Kelola API <ChevronRight className="ml-1 h-4 w-4" /></Link>
-                </Button>
-              </div>
-              <div className="p-6 bg-black/40 rounded-3xl border border-white/5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
-                    <Key className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold">Partner API</p>
-                    <p className="text-xs text-slate-500">Gunakan API untuk integrasi bisnis.</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">API Key Status</p>
-                  <div className="h-12 bg-white/5 rounded-xl flex items-center px-4 border border-white/5 justify-between">
-                    <span className="text-sm font-mono text-slate-400">pk_live_****************</span>
-                    <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-primary/20 hover:text-primary">Salin</Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
+        </div>
+      </div>
     </div>
-  );
+  )
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  foot,
+}: {
+  icon: typeof Wallet
+  label: string
+  value: string
+  foot?: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
+        <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+      <p className="text-2xl font-semibold tracking-tight">{value}</p>
+      {foot}
+    </div>
+  )
 }

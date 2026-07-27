@@ -1,318 +1,277 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { BrandMark } from "@/components/brand-mark";
-import { apiUrl } from "@/lib/api";
-import { 
-  Key, 
-  Copy, 
-  RefreshCw, 
-  ShieldCheck, 
-  Globe, 
-  Code, 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { apiUrl } from "@/lib/api"
+import {
+  Key,
+  Copy,
+  RefreshCw,
+  ShieldCheck,
+  Globe,
   CheckCircle2,
-  ChevronRight,
-  ArrowLeft,
-  LayoutDashboard,
-  CreditCard,
-  History,
-  Settings,
-  LogOut,
-  User as UserIcon,
-  Search,
-  Bell,
   Eye,
-  EyeOff
-} from "lucide-react";
+  EyeOff,
+  Loader2,
+} from "lucide-react"
 
 interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  apiKey?: string;
-  apiSecret?: string;
-  ipWhitelist?: string;
+  id: string
+  name: string
+  email: string
+  role: string
+  apiKey?: string
+  apiSecret?: string
+  ipWhitelist?: string
 }
 
 export default function ApiManagementPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showSecret, setShowSecret] = useState(false);
-  const [ipWhitelist, setIpWhitelist] = useState("");
-  const [isUpdatingIp, setIsUpdatingIp] = useState(false);
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [showSecret, setShowSecret] = useState(false)
+  const [ipWhitelist, setIpWhitelist] = useState("")
+  const [isUpdatingIp, setIsUpdatingIp] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("token")
     if (!token) {
-      router.push("/login");
-      return;
+      router.push("/login")
+      return
     }
+    fetchProfile()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router])
 
-    fetchProfile();
-  }, [router]);
-
-  const fetchProfile = async () => {
+  async function fetchProfile() {
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(apiUrl("/users/profile"), {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      const data = await response.json();
-      if (data.status === 'success') {
-        setUser(data.data);
-        setIpWhitelist(data.data.ipWhitelist || "");
+      const token = localStorage.getItem("token")
+      const res = await fetch(apiUrl("/users/profile"), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.status === 401) {
+        router.push("/login")
+        return
       }
-    } catch (error) {
-      console.error("Failed to fetch profile:", error);
+      const data = await res.json()
+      const u = data?.data ?? data
+      if (u?.id) {
+        setUser(u)
+        setIpWhitelist(u.ipWhitelist || "")
+      }
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
-  const generateKeys = async () => {
-    setIsGenerating(true);
+  async function generateKeys() {
+    setIsGenerating(true)
+    setNotice(null)
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(apiUrl("/users/api-keys"), {
+      const token = localStorage.getItem("token")
+      const res = await fetch(apiUrl("/users/api-keys"), {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      const data = await response.json();
-      if (data.status === 'success') {
-        fetchProfile();
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        await fetchProfile()
+        setNotice("API key baru dibuat. Simpan secret dengan aman — tampil sekali di sini.")
       }
-    } catch (error) {
-      console.error("Failed to generate keys:", error);
     } finally {
-      setIsGenerating(false);
+      setIsGenerating(false)
     }
-  };
+  }
 
-  const updateIpWhitelist = async () => {
-    setIsUpdatingIp(true);
+  async function updateIpWhitelist() {
+    if (!user) return
+    setIsUpdatingIp(true)
+    setNotice(null)
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(apiUrl(`/users/${user?.id}`), {
+      const token = localStorage.getItem("token")
+      const res = await fetch(apiUrl(`/users/${user.id}`), {
         method: "PATCH",
-        headers: { 
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ipWhitelist })
-      });
-      if (response.ok) {
-        alert("IP Whitelist diperbarui!");
-      }
-    } catch (error) {
-      console.error("Failed to update IP whitelist:", error);
+        body: JSON.stringify({ ipWhitelist }),
+      })
+      if (res.ok) setNotice("IP whitelist diperbarui.")
     } finally {
-      setIsUpdatingIp(false);
+      setIsUpdatingIp(false)
     }
-  };
+  }
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    alert(`${label} disalin ke clipboard!`);
-  };
+  function copy(text: string, tag: string) {
+    navigator.clipboard?.writeText(text)
+    setCopied(tag)
+    setTimeout(() => setCopied(null), 1500)
+  }
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/");
-  };
-
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen mesh-gradient flex items-center justify-center">
-        <Key className="h-10 w-10 text-primary animate-pulse" />
+      <div className="min-h-[60vh] grid place-items-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
-    );
+    )
   }
 
   return (
-    <div className="p-6 sm:p-8 space-y-8 max-w-5xl mx-auto">
-          {/* Hero Card */}
-          <Card className="glass-dark border-white/5 rounded-[2.5rem] p-10 overflow-hidden relative group">
-            <div className="absolute top-0 right-0 p-10">
-              <div className="h-20 w-20 rounded-3xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 group-hover:scale-110 transition-transform duration-500">
-                <Code className="h-10 w-10" />
-              </div>
-            </div>
-            <div className="relative z-10 space-y-6 max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-bold text-primary uppercase tracking-widest">
-                Developer Mode
-              </div>
-              <h2 className="text-4xl font-bold tracking-tight leading-tight">Integrasikan Bisnis Anda dengan <span className="gradient-text">API Handal</span></h2>
-              <p className="text-lg text-slate-400 leading-relaxed">
-                Gunakan kredensial API Anda untuk mengakses layanan top-up secara otomatis. Pastikan untuk menjaga kerahasiaan API Secret Anda.
+    <div className="p-6 sm:p-8 max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">API H2H</h1>
+        <p className="text-sm text-muted-foreground">
+          Kredensial untuk integrasi reseller — endpoint <code className="font-mono text-xs">/api/h2h/*</code>
+        </p>
+      </div>
+
+      {notice && (
+        <div className="flex items-center gap-2 text-sm text-success bg-success/10 rounded-xl px-3 py-2.5">
+          <CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}
+        </div>
+      )}
+
+      {/* Credentials */}
+      <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary">
+              <Key className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="font-semibold">API Credentials</h2>
+              <p className="text-xs text-muted-foreground">
+                {user?.apiKey ? "Kredensial aktif" : "Belum ada API key"}
               </p>
             </div>
-          </Card>
-
-          <div className="grid lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
-              {/* API Credentials */}
-              <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-2xl bg-violet-500/10 flex items-center justify-center text-violet-500">
-                      <ShieldCheck className="h-6 w-6" />
-                    </div>
-                    <h3 className="text-xl font-bold">Kredensial API</h3>
-                  </div>
-                  <Button 
-                    onClick={generateKeys} 
-                    disabled={isGenerating}
-                    variant="outline" 
-                    className="rounded-2xl border-white/5 bg-white/5 hover:bg-white/10"
-                  >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                    {user.apiKey ? 'Regenerasi Key' : 'Generate Key'}
-                  </Button>
-                </div>
-
-                {!user.apiKey ? (
-                  <div className="py-12 flex flex-col items-center text-center space-y-4 bg-black/20 rounded-3xl border border-dashed border-white/10">
-                    <Key className="h-12 w-12 text-slate-600" />
-                    <p className="text-slate-500 max-w-xs">Anda belum memiliki API Key. Klik tombol di atas untuk membuat kredensial pertama Anda.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">API Key (Public)</Label>
-                      <div className="flex gap-2">
-                        <Input 
-                          readOnly 
-                          value={user.apiKey} 
-                          className="h-14 bg-black/20 border-white/5 rounded-2xl font-mono text-sm"
-                        />
-                        <Button 
-                          onClick={() => copyToClipboard(user.apiKey!, "API Key")}
-                          className="h-14 w-14 rounded-2xl bg-white/5 border-white/5 hover:bg-white/10"
-                          variant="ghost"
-                        >
-                          <Copy className="h-5 w-5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">API Secret (Private)</Label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <Input 
-                            type={showSecret ? "text" : "password"}
-                            readOnly 
-                            value={user.apiSecret} 
-                            className="h-14 bg-black/20 border-white/5 rounded-2xl font-mono text-sm pr-14"
-                          />
-                          <button 
-                            onClick={() => setShowSecret(!showSecret)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
-                          >
-                            {showSecret ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                          </button>
-                        </div>
-                        <Button 
-                          onClick={() => copyToClipboard(user.apiSecret!, "API Secret")}
-                          className="h-14 w-14 rounded-2xl bg-white/5 border-white/5 hover:bg-white/10"
-                          variant="ghost"
-                        >
-                          <Copy className="h-5 w-5" />
-                        </Button>
-                      </div>
-                      <p className="text-[10px] text-rose-400 font-medium">Jangan pernah membagikan API Secret kepada siapapun!</p>
-                    </div>
-                  </div>
-                )}
-              </Card>
-
-              {/* IP Whitelist */}
-              <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                    <Globe className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">IP Whitelist</h3>
-                    <p className="text-sm text-slate-500">Batasi akses API hanya dari IP server Anda.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <Input 
-                    placeholder="Contoh: 1.2.3.4, 5.6.7.8"
-                    value={ipWhitelist}
-                    onChange={(e) => setIpWhitelist(e.target.value)}
-                    className="h-14 bg-black/20 border-white/5 rounded-2xl"
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-slate-500">Gunakan koma (,) untuk memisahkan beberapa alamat IP.</p>
-                    <Button 
-                      onClick={updateIpWhitelist}
-                      disabled={isUpdatingIp}
-                      className="rounded-xl shadow-glow"
-                    >
-                      {isUpdatingIp ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Simpan Perubahan"}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            <div className="space-y-8">
-              {/* Documentation Quick Links */}
-              <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-6">
-                <h3 className="text-lg font-bold">Panduan Integrasi</h3>
-                <div className="space-y-3">
-                  {[
-                    { title: "Autentikasi Signature", icon: ShieldCheck },
-                    { title: "Daftar Endpoint", icon: Code },
-                    { title: "Contoh Request Node.js", icon: Code },
-                    { title: "Handling Callback", icon: Globe },
-                  ].map((item, i) => (
-                    <button key={i} className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-primary/50 transition-all group">
-                      <div className="flex items-center gap-3">
-                        <item.icon className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">{item.title}</span>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-white transition-colors" />
-                    </button>
-                  ))}
-                </div>
-              </Card>
-
-              {/* API Status */}
-              <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-6">
-                <h3 className="text-lg font-bold">Status Layanan</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Production API</span>
-                    <div className="flex items-center gap-2 text-emerald-500 text-[10px] font-bold bg-emerald-500/10 px-3 py-1 rounded-full">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      OPERATIONAL
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Transaction Engine</span>
-                    <div className="flex items-center gap-2 text-emerald-500 text-[10px] font-bold bg-emerald-500/10 px-3 py-1 rounded-full">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      OPERATIONAL
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </div>
           </div>
+          <Button size="sm" onClick={generateKeys} disabled={isGenerating} loading={isGenerating}>
+            <RefreshCw className="h-4 w-4" />
+            {user?.apiKey ? "Regenerate" : "Buat API Key"}
+          </Button>
+        </div>
+
+        {user?.apiKey && (
+          <div className="space-y-3">
+            <CredentialRow
+              label="API Key"
+              value={user.apiKey}
+              onCopy={() => copy(user.apiKey!, "key")}
+              copied={copied === "key"}
+            />
+            {user.apiSecret && (
+              <CredentialRow
+                label="API Secret"
+                value={showSecret ? user.apiSecret : "sk_" + "•".repeat(32)}
+                onCopy={() => copy(user.apiSecret!, "secret")}
+                copied={copied === "secret"}
+                extra={
+                  <button
+                    onClick={() => setShowSecret((v) => !v)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Toggle secret"
+                  >
+                    {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                }
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* IP whitelist */}
+      <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary">
+            <Globe className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-semibold">IP Whitelist</h2>
+            <p className="text-xs text-muted-foreground">
+              Pisahkan dengan koma. Kosongkan untuk izinkan semua IP.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ip" className="text-sm">Daftar IP</Label>
+          <Input
+            id="ip"
+            placeholder="103.10.10.1, 103.10.10.2"
+            value={ipWhitelist}
+            onChange={(e) => setIpWhitelist(e.target.value)}
+            className="font-mono text-sm"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={updateIpWhitelist}
+          disabled={isUpdatingIp}
+          loading={isUpdatingIp}
+        >
+          Simpan Whitelist
+        </Button>
+      </div>
+
+      {/* Docs */}
+      <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary">
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-semibold">Contoh Request</h2>
+            <p className="text-xs text-muted-foreground">Kirim API key via header <code className="font-mono">x-api-key</code></p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-[#0b0b0f] overflow-hidden">
+          <pre className="p-4 text-xs leading-relaxed text-emerald-300 font-mono overflow-x-auto">
+{`POST ${apiUrl("/h2h/transaction")}
+x-api-key: {API_KEY}
+Content-Type: application/json
+
+{
+  "productId": "TELKOMSEL_10K",
+  "phoneNumber": "081234567890",
+  "metadata": { "client_ref": "TX-001" }
+}`}
+          </pre>
+        </div>
+      </div>
     </div>
-  );
+  )
+}
+
+function CredentialRow({
+  label,
+  value,
+  onCopy,
+  copied,
+  extra,
+}: {
+  label: string
+  value: string
+  onCopy: () => void
+  copied: boolean
+  extra?: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3.5 h-12">
+        <span className="flex-1 font-mono text-xs truncate">{value}</span>
+        {extra}
+        <button onClick={onCopy} className="text-muted-foreground hover:text-foreground" aria-label={`Salin ${label}`}>
+          {copied ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
+  )
 }

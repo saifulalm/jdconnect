@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { makeDynamicQris } from './qris.util';
 
 export interface CreateChargeParams {
   orderId: string; // our invoice number
@@ -15,6 +16,7 @@ export interface ChargeResult {
   orderId: string;
   token?: string; // Snap token
   redirectUrl?: string;
+  qrString?: string; // dynamic QRIS payload (qris-static driver)
   gateway: string;
 }
 
@@ -39,15 +41,20 @@ export class PaymentService {
   private readonly serverKey: string;
   private readonly clientKey: string;
   private readonly isProduction: boolean;
+  private readonly qrisStaticCode: string;
 
   constructor(private readonly config: ConfigService) {
     this.serverKey = this.config.get<string>('MIDTRANS_SERVER_KEY', '');
     this.clientKey = this.config.get<string>('MIDTRANS_CLIENT_KEY', '');
     this.isProduction = this.config.get<string>('MIDTRANS_IS_PRODUCTION', 'false') === 'true';
+    this.qrisStaticCode = this.config.get<string>('QRIS_STATIC_CODE', '');
   }
 
+  // Priority: real gateway > open-source static-QRIS > mock.
   get gatewayName(): string {
-    return this.isConfigured() ? 'midtrans' : 'mock';
+    if (this.isConfigured()) return 'midtrans';
+    if (this.qrisStaticCode) return 'qris';
+    return 'mock';
   }
 
   get clientKeyPublic(): string {
@@ -77,6 +84,15 @@ export class PaymentService {
   async createCharge(params: CreateChargeParams): Promise<ChargeResult> {
     const amount = Math.round(params.amount);
     if (!this.isConfigured()) {
+      // Open-source path: dynamic QRIS generated from the merchant's static
+      // code. Payment is confirmed manually (admin) — no PJP auto-detection.
+      if (this.qrisStaticCode) {
+        return {
+          orderId: params.orderId,
+          qrString: makeDynamicQris(this.qrisStaticCode, amount),
+          gateway: 'qris',
+        };
+      }
       // Mock: pretend a Snap session was created.
       const frontend = this.config
         .get('FRONTEND_URL', 'http://localhost:4001')

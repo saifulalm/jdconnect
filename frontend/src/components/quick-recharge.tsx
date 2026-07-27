@@ -86,6 +86,17 @@ export function QuickRecharge() {
     return products
   }, [products, operator, category])
 
+  // Group by provider so long lists stay scannable.
+  const groups = useMemo(() => {
+    const map = new Map<string, Product[]>()
+    for (const p of shown) {
+      const list = map.get(p.provider)
+      if (list) list.push(p)
+      else map.set(p.provider, [p])
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [shown])
+
   async function handleBuy() {
     setError(null)
     if (!phoneValid) return setError("Masukkan nomor tujuan yang valid")
@@ -110,6 +121,9 @@ export function QuickRecharge() {
           onError: () => router.push(trackUrl),
           onClose: () => router.push(trackUrl),
         })
+      } else if (order.payment.gateway === "qris") {
+        // Open-source QRIS: the track page renders the QR + payment status.
+        router.push(trackUrl)
       } else {
         // Mock gateway: settle immediately for a complete local demo.
         await mockPay(order.invoiceNumber)
@@ -186,25 +200,38 @@ export function QuickRecharge() {
             Belum ada produk untuk kategori ini. Admin dapat sinkron dari supplier.
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-64 overflow-y-auto pr-1">
-            {shown.map((p) => {
-              const active = selected?.id === p.id
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setSelected(p)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-2xl border p-3 text-left transition-all",
-                    active
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border hover:border-primary/40 hover:bg-muted",
-                  )}
-                >
-                  <span className="text-sm font-semibold leading-tight">{p.name}</span>
-                  <span className="text-xs text-muted-foreground">{formatIDR(p.price)}</span>
-                </button>
-              )
-            })}
+          <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+            {groups.map(([provider, items]) => (
+              <div key={provider} className="space-y-2">
+                <div className="flex items-center gap-2 sticky top-0 bg-card py-0.5">
+                  <span className="text-xs font-semibold tracking-wide text-foreground">{provider}</span>
+                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                    {items.length}
+                  </span>
+                  <span className="flex-1 h-px bg-border" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {items.map((p) => {
+                    const active = selected?.id === p.id
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setSelected(p)}
+                        className={cn(
+                          "flex flex-col items-start gap-1 rounded-2xl border p-3 text-left transition-all",
+                          active
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border hover:border-primary/40 hover:bg-muted",
+                        )}
+                      >
+                        <span className="text-sm font-semibold leading-tight">{p.name}</span>
+                        <span className="text-xs text-muted-foreground">{formatIDR(p.price)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

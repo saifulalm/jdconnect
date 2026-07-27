@@ -1,24 +1,26 @@
-"use client";
+"use client"
 
-import { useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
-import { Navbar } from "@/components/navbar";
-import { Sidebar } from "@/components/sidebar";
+import { useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
+import { Navbar } from "@/components/navbar"
+import { Sidebar } from "@/components/sidebar"
 
+// Only authenticated-area routes get the navbar+sidebar shell.
+// NOTE: "/transaction" (guest checkout) is public and shell-less;
+// "/transactions" (history) IS shelled — match exact segments, not prefixes.
 function shouldShowShell(pathname: string) {
-  if (pathname.startsWith("/dashboard")) return true;
-  if (pathname.startsWith("/transaction")) return true;
-  if (pathname.startsWith("/transactions")) return true;
-  return false;
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) return true
+  if (pathname === "/transactions") return true
+  return false
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const showShell = useMemo(() => shouldShowShell(pathname), [pathname]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname()
+  const showShell = useMemo(() => shouldShowShell(pathname), [pathname])
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   if (!showShell) {
-    return <>{children}</>;
+    return <>{children}</>
   }
 
   return (
@@ -29,6 +31,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="min-h-[calc(100vh-4rem)]">{children}</main>
       </div>
     </>
-  );
+  )
 }
-

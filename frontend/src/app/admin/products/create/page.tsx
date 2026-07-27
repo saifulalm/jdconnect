@@ -1,5 +1,6 @@
 "use client";
 
+import { isAdminRole } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -55,7 +56,7 @@ export default function AdminProductCreatePage() {
       return;
     }
     const userData = JSON.parse(user);
-    if (userData.role !== "admin") {
+    if (!isAdminRole(userData.role)) {
       router.push("/dashboard");
     }
   }, [router]);

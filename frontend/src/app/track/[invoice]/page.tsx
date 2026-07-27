@@ -12,6 +12,7 @@ import {
   Receipt,
   Copy,
 } from "lucide-react"
+import QRCode from "qrcode"
 import { trackOrder, formatIDR, type OrderStatus } from "@/lib/api"
 import { BrandMark } from "@/components/brand-mark"
 
@@ -30,6 +31,7 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
   const [order, setOrder] = useState<OrderStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -54,6 +56,17 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
     const t = setInterval(refresh, 4000)
     return () => clearInterval(t)
   }, [order, refresh])
+
+  // Render the dynamic QRIS locally while payment is outstanding.
+  useEffect(() => {
+    if (order?.qrString) {
+      QRCode.toDataURL(order.qrString, { width: 260, margin: 1 })
+        .then(setQrDataUrl)
+        .catch(() => setQrDataUrl(null))
+    } else {
+      setQrDataUrl(null)
+    }
+  }, [order?.qrString])
 
   const ui = order ? STATUS_UI[order.status] ?? STATUS_UI.pending : STATUS_UI.pending
   const Icon = ui.icon
@@ -97,6 +110,24 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
                 {order.product} · {order.provider}
               </p>
             </div>
+
+            {qrDataUrl && (
+              <div className="p-6 pb-0 text-center space-y-3">
+                <p className="text-sm font-medium">Scan QRIS untuk membayar</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={qrDataUrl}
+                  alt="QRIS pembayaran"
+                  className="mx-auto rounded-2xl border border-border bg-white p-2"
+                  width={260}
+                  height={260}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Bayar {order ? formatIDR(order.amount) : ""} lewat aplikasi bank / e-wallet apa pun.
+                  Status diperbarui setelah dikonfirmasi.
+                </p>
+              </div>
+            )}
 
             <dl className="p-6 space-y-3 text-sm">
               <Row label="Invoice" value={order.invoiceNumber} mono copyable />

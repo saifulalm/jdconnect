@@ -112,7 +112,10 @@ export class TransactionService {
     customerEmail?: string;
     customerName?: string;
     userId?: string;
-  }): Promise<{ transaction: Transaction; payment: { token?: string; redirectUrl?: string; gateway: string } }> {
+  }): Promise<{
+    transaction: Transaction;
+    payment: { token?: string; redirectUrl?: string; qrString?: string; gateway: string };
+  }> {
     const product = await this.productRepository.findOne({ where: { id: dto.productId } });
     if (!product) throw new BadRequestException('Product not found');
     if (!product.isActive) throw new BadRequestException('Product is not active');
@@ -154,13 +157,20 @@ export class TransactionService {
 
     await this.transactionRepository.update(transaction.id, {
       paymentMethod: charge.gateway,
-      paymentToken: charge.token,
+      // For the qris driver the payload doubles as the "token" so the track
+      // endpoint can re-serve the QR while the order is unpaid.
+      paymentToken: charge.token ?? charge.qrString,
       paymentRedirectUrl: charge.redirectUrl,
     });
 
     return {
       transaction: (await this.findById(transaction.id))!,
-      payment: { token: charge.token, redirectUrl: charge.redirectUrl, gateway: charge.gateway },
+      payment: {
+        token: charge.token,
+        redirectUrl: charge.redirectUrl,
+        qrString: charge.qrString,
+        gateway: charge.gateway,
+      },
     };
   }
 

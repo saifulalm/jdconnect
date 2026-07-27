@@ -27,7 +27,7 @@ export type GuestOrderResponse = {
   amount: number
   status: string
   paymentStatus: string
-  payment: { token?: string; redirectUrl?: string; gateway: string }
+  payment: { token?: string; redirectUrl?: string; qrString?: string; gateway: string }
 }
 
 export type OrderStatus = {
@@ -40,6 +40,7 @@ export type OrderStatus = {
   paymentStatus: string
   serialNumber?: string
   message?: string
+  qrString?: string
   createdAt: string
 }
 

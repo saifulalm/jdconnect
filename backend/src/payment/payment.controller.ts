@@ -1,6 +1,10 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { TransactionService } from '../transaction/transaction.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/roles/role.enum';
 
 @Controller('payment')
 export class PaymentController {
@@ -45,6 +49,24 @@ export class PaymentController {
       paymentMethod: 'mock',
     });
     return { status: 'ok' };
+  }
+
+  /**
+   * Manual settlement for the open-source qris-static driver: an admin
+   * verifies the mutation in their banking/e-wallet app, then confirms here.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
+  @Post('confirm/:invoiceNumber')
+  async confirmManual(@Param('invoiceNumber') invoiceNumber: string) {
+    await this.transactionService.handlePaymentResult({
+      orderId: invoiceNumber,
+      paid: true,
+      failed: false,
+      pending: false,
+      paymentMethod: 'qris',
+    });
+    return { status: 'ok', invoiceNumber };
   }
 
   @Get('status/:invoiceNumber')

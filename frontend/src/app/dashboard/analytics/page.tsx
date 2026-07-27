@@ -1,143 +1,271 @@
-"use client";
+"use client"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
-import { useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, BarChart3, Clock, DollarSign, PieChart, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts"
+import { Button } from "@/components/ui/button"
+import { Wallet, TrendingUp, CheckCircle2, RefreshCw, Loader2, BarChart3 } from "lucide-react"
+import { apiUrl, formatIDR } from "@/lib/api"
 
-const sampleData = [
-  { name: "Jan", revenue: 4000, trx: 240 },
-  { name: "Feb", revenue: 3000, trx: 180 },
-  { name: "Mar", revenue: 5200, trx: 310 },
-  { name: "Apr", revenue: 2780, trx: 210 },
-  { name: "May", revenue: 3890, trx: 260 },
-  { name: "Jun", revenue: 4390, trx: 295 },
-];
+interface Trx {
+  id: string
+  type: string
+  price: number
+  status: string
+  createdAt: string
+}
+
+// Tokens are hex — read resolved values from CSS at mount (theme-aware).
+function useChartColors() {
+  const [colors, setColors] = useState({
+    primary: "#4f46e5",
+    accent: "#8b5cf6",
+    border: "#e6e6ea",
+    muted: "#6b7280",
+    card: "#ffffff",
+  })
+  useEffect(() => {
+    const read = () => {
+      const s = getComputedStyle(document.documentElement)
+      const v = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
+      setColors({
+        primary: v("--primary", "#4f46e5"),
+        accent: v("--accent", "#8b5cf6"),
+        border: v("--border", "#e6e6ea"),
+        muted: v("--muted-foreground", "#6b7280"),
+        card: v("--card", "#ffffff"),
+      })
+    }
+    read()
+    // Re-read when the theme class flips.
+    const obs = new MutationObserver(read)
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+    return () => obs.disconnect()
+  }, [])
+  return colors
+}
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 
 export default function AnalyticsPage() {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState(sampleData);
+  const router = useRouter()
+  const colors = useChartColors()
+  const [transactions, setTransactions] = useState<Trx[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const refreshData = async () => {
-    setLoading(true);
-    setTimeout(() => {
-      setData(sampleData);
-      setLoading(false);
-    }, 500);
-  };
+  async function load() {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      router.push("/login")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch(apiUrl("/transactions"), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.status === 401) {
+        router.push("/login")
+        return
+      }
+      const data = await res.json()
+      setTransactions(Array.isArray(data) ? data : [])
+    } catch {
+      setTransactions([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Derive real per-user analytics from the transaction list.
+  const { monthly, byCategory, totals } = useMemo(() => {
+    const now = new Date()
+    const months: { name: string; belanja: number; trx: number }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({ name: MONTH_LABELS[d.getMonth()], belanja: 0, trx: 0 })
+    }
+    const monthIndex = (dt: Date) => {
+      const diff =
+        (now.getFullYear() - dt.getFullYear()) * 12 + (now.getMonth() - dt.getMonth())
+      return diff >= 0 && diff <= 5 ? 5 - diff : -1
+    }
+
+    const cat: Record<string, number> = {}
+    let spent = 0
+    let success = 0
+    for (const t of transactions) {
+      const d = new Date(t.createdAt)
+      const idx = monthIndex(d)
+      if (idx >= 0) {
+        months[idx].trx += 1
+        if (t.status === "success") months[idx].belanja += Number(t.price || 0)
+      }
+      if (t.status === "success") {
+        spent += Number(t.price || 0)
+        success += 1
+        cat[t.type] = (cat[t.type] || 0) + Number(t.price || 0)
+      }
+    }
+    const byCategory = Object.entries(cat)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+    return {
+      monthly: months,
+      byCategory,
+      totals: {
+        spent,
+        count: transactions.length,
+        successRate: transactions.length ? Math.round((success / transactions.length) * 100) : 0,
+      },
+    }
+  }, [transactions])
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] grid place-items-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
-    <div className="p-6 sm:p-8 space-y-8">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">Analytics & Laporan</h1>
-          <p className="text-sm text-muted-foreground">Ringkasan performa transaksi dan pendapatan.</p>
+    <div className="p-6 sm:p-8 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Analytics</h1>
+          <p className="text-sm text-muted-foreground">Ringkasan transaksi kamu, 6 bulan terakhir</p>
         </div>
-        <Button onClick={refreshData} disabled={loading} className="rounded-2xl shadow-glow">
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+        <Button variant="outline" size="sm" onClick={load}>
+          <RefreshCw className="h-4 w-4" /> Muat Ulang
         </Button>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 group">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Revenue</p>
-              <p className="text-3xl font-bold text-primary">Rp 45,2jt</p>
-            </div>
-            <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 group-hover:scale-110 transition-transform">
-              <DollarSign className="h-7 w-7" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 group">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Transaksi</p>
-              <p className="text-3xl font-bold text-emerald-500">1.247</p>
-            </div>
-            <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 group-hover:scale-110 transition-transform">
-              <Activity className="h-7 w-7" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 group">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Avg Time</p>
-              <p className="text-3xl font-bold text-violet-500">2,3s</p>
-            </div>
-            <div className="h-14 w-14 rounded-2xl bg-violet-500/10 flex items-center justify-center text-violet-500 border border-violet-500/20 group-hover:scale-110 transition-transform">
-              <Clock className="h-7 w-7" />
-            </div>
-          </div>
-        </Card>
+      {/* Stat tiles */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <Tile icon={Wallet} label="Total Belanja" value={formatIDR(totals.spent)} />
+        <Tile icon={TrendingUp} label="Jumlah Transaksi" value={String(totals.count)} />
+        <Tile icon={CheckCircle2} label="Tingkat Sukses" value={`${totals.successRate}%`} />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        <Card className="glass-dark border-white/5 rounded-[2.5rem] lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Trend Bulanan
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-96 min-h-[24rem]">
-              <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-                <XAxis dataKey="name" stroke="#94A3B8" />
-                <YAxis stroke="#94A3B8" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0F172A",
-                    border: "1px solid #1E293B",
-                    borderRadius: "12px",
-                  }}
-                  labelStyle={{ color: "#F8FAFC" }}
-                  itemStyle={{ color: "#F8FAFC" }}
+      {transactions.length === 0 ? (
+        <div className="py-16 text-center space-y-4 rounded-2xl border border-border bg-card">
+          <span className="grid place-items-center size-14 rounded-2xl bg-muted text-muted-foreground mx-auto">
+            <BarChart3 className="h-6 w-6" />
+          </span>
+          <div>
+            <p className="font-medium text-sm">Belum ada data</p>
+            <p className="text-xs text-muted-foreground">Grafik muncul setelah transaksi pertama.</p>
+          </div>
+          <Button size="sm" asChild>
+            <Link href="/transaction">Mulai Transaksi</Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="grid lg:grid-cols-2 gap-4">
+          {/* Spend per month */}
+          <ChartCard title="Belanja per Bulan">
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={monthly} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                <XAxis dataKey="name" stroke={colors.muted} fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis
+                  stroke={colors.muted}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}rb` : String(v))}
                 />
-                <Legend />
-                <Line type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="trx" stroke="#10B981" strokeWidth={3} dot={false} />
+                <Tooltip
+                  formatter={(v) => formatIDR(Number(v))}
+                  contentStyle={{
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 12,
+                    fontSize: 12,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="belanja"
+                  stroke={colors.primary}
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: colors.primary }}
+                  name="Belanja"
+                />
               </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+            </ResponsiveContainer>
+          </ChartCard>
 
-        <Card className="glass-dark border-white/5 rounded-[2.5rem]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PieChart className="h-5 w-5" />
-              Distribusi Produk
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { label: "Pulsa", value: 45, color: "#3B82F6" },
-              { label: "Data", value: 30, color: "#10B981" },
-              { label: "PLN", value: 15, color: "#F59E0B" },
-              { label: "Game", value: 10, color: "#8B5CF6" },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-sm font-medium">{item.label}</span>
-                </div>
-                <span className="text-sm font-bold text-primary">{item.value}%</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+          {/* Spend per category */}
+          <ChartCard title="Belanja per Kategori">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={byCategory} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} vertical={false} />
+                <XAxis dataKey="name" stroke={colors.muted} fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis
+                  stroke={colors.muted}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}rb` : String(v))}
+                />
+                <Tooltip
+                  formatter={(v) => formatIDR(Number(v))}
+                  contentStyle={{
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 12,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar dataKey="value" fill={colors.accent} radius={[8, 8, 0, 0]} name="Belanja" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </div>
+      )}
     </div>
-  );
+  )
+}
+
+function Tile({ icon: Icon, label, value }: { icon: typeof Wallet; label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 flex items-center justify-between gap-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
+        <p className="text-xl font-semibold tracking-tight mt-1">{value}</p>
+      </div>
+      <span className="grid place-items-center size-11 rounded-xl bg-primary/10 text-primary shrink-0">
+        <Icon className="h-5 w-5" />
+      </span>
+    </div>
+  )
+}
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+      <h3 className="font-semibold text-sm">{title}</h3>
+      {children}
+    </div>
+  )
 }

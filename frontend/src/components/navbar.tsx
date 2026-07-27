@@ -1,48 +1,37 @@
-"use client";
+"use client"
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Search,
-  Zap,
-  Bell,
-  User,
-  Moon,
-  Sun,
-  ChevronDown,
-  LogOut,
-  Menu,
-  X
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useTheme } from "next-themes"; // Assuming next-themes installed
-import { BrandMark } from "@/components/brand-mark";
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { Search, Bell, Moon, Sun, Menu } from "lucide-react"
+import { useTheme } from "next-themes"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { BrandMark } from "@/components/brand-mark"
 
 export function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
-  const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [user, setUser] = useState<any>(null);
-  const { theme, setTheme } = useTheme();
+  const [user, setUser] = useState<{ name?: string; role?: string } | null>(null)
+  const [mounted, setMounted] = useState(false)
+  const { resolvedTheme, setTheme } = useTheme()
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
+    setMounted(true)
+    const userData = localStorage.getItem("user")
     if (userData) {
-      setUser(JSON.parse(userData));
+      try {
+        setUser(JSON.parse(userData))
+      } catch {
+        setUser(null)
+      }
     }
-  }, []);
+  }, [])
 
-  const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
-  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+  const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark")
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/30 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
+      <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {/* Opens the sidebar drawer on mobile */}
           <Button
             variant="ghost"
             size="icon"
@@ -52,121 +41,56 @@ export function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <BrandMark href="/dashboard" nameClassName="text-base font-semibold tracking-tight" />
+          <BrandMark href="/dashboard" />
         </div>
 
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-2">
-          {[
-            { href: "/dashboard", label: "Dashboard" },
-            { href: "/transaction", label: "Transaksi" },
-            { href: "/transactions", label: "Riwayat" },
-            { href: "/dashboard/analytics", label: "Analytics" },
-            { href: "/dashboard/api", label: "API H2H" },
-            { href: "/dashboard/settings", label: "Pengaturan" },
-          ].map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-1",
-                pathname === item.href
-                  ? "bg-primary/10 text-primary shadow-md"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-3">
-          {/* Search */}
+        <div className="flex items-center gap-2">
           <div className="relative hidden md:block w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari produk, transaksi..."
-              className="h-10 pl-10 w-full rounded-xl bg-muted/50 border-border focus-visible:ring-primary/50"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input placeholder="Cari produk, transaksi..." className="h-10 !pl-10 rounded-xl" />
           </div>
 
-          {/* Theme Toggle */}
           <Button
             variant="ghost"
             size="icon"
             className="h-10 w-10 rounded-xl"
             onClick={toggleTheme}
+            aria-label="Ganti tema"
           >
-            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
+            {mounted && resolvedTheme === "dark" ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
           </Button>
 
-          {/* Notifications */}
-          <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl relative">
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1 right-1 h-2 w-2 bg-destructive rounded-full border-2 border-background" />
-          </Button>
-
-          {/* Profile Dropdown */}
-          <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center font-bold text-white shadow-lg">
-              {user?.name?.[0] || "JD"}
-            </div>
-            <div className="hidden md:block text-right">
-              <p className="text-sm font-medium text-foreground">{user?.name || "User"}</p>
-              <p className="text-[10px] text-muted-foreground -mt-0.5">{user?.role || ""}</p>
-            </div>
-            <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl">
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Mobile Menu Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden h-10 w-10 rounded-xl"
-            onClick={toggleMobileMenu}
-            aria-label="Buka menu navigasi"
-          >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </Button>
+          {user ? (
+            <>
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl relative" aria-label="Notifikasi">
+                <Bell className="h-5 w-5" />
+              </Button>
+              <div className="flex items-center gap-2 pl-1">
+                <span className="grid place-items-center h-9 w-9 rounded-xl bg-primary text-primary-foreground font-semibold text-sm">
+                  {user.name?.[0]?.toUpperCase() || "?"}
+                </span>
+                <div className="hidden md:block">
+                  <p className="text-sm font-medium leading-tight">{user.name}</p>
+                  <p className="text-[10px] text-muted-foreground capitalize leading-tight">{user.role}</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" className="hidden sm:flex" asChild>
+                <Link href="/track">Lacak Pesanan</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/transaction">Beli Sekarang</Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
-
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-border/20 bg-background/95 backdrop-blur-xl">
-          <div className="container mx-auto px-4 py-4 space-y-2">
-            {[
-              { href: "/dashboard", label: "Dashboard" },
-              { href: "/transaction", label: "Transaksi" },
-              { href: "/transactions", label: "Riwayat" },
-              { href: "/dashboard/analytics", label: "Analytics" },
-              { href: "/dashboard/api", label: "API H2H" },
-              { href: "/dashboard/settings", label: "Pengaturan" },
-            ].map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "block px-4 py-3 rounded-xl text-sm font-medium transition-all w-full text-left",
-                  pathname === item.href
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
     </header>
-  );
+  )
 }

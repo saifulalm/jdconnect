@@ -37,6 +37,9 @@ export class OrdersController {
     @Query('phone') phoneLast4: string,
   ) {
     const trx = await this.transactionService.trackGuestOrder(invoiceNumber, phoneLast4 || '');
+    const awaitingQris =
+      trx.paymentMethod === 'qris' &&
+      (trx.paymentStatus === 'pending' || trx.paymentStatus === 'unpaid');
     return {
       invoiceNumber: trx.invoiceNumber,
       product: trx.product?.name,
@@ -47,6 +50,8 @@ export class OrdersController {
       paymentStatus: trx.paymentStatus,
       serialNumber: trx.serialNumber,
       message: trx.supplierMessage,
+      // Re-serve the dynamic QRIS payload while payment is outstanding.
+      qrString: awaitingQris ? trx.paymentToken : undefined,
       createdAt: trx.createdAt,
     };
   }

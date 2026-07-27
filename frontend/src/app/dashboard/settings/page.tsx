@@ -1,189 +1,199 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { apiUrl } from "@/lib/api";
-import { 
-  LayoutDashboard,
-  CreditCard,
-  History,
-  Key,
-  Settings,
-  User, 
-  Mail, 
-  Phone, 
-  Shield, 
-  Moon, 
-  Sun,
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { apiUrl } from "@/lib/api"
+import {
+  User,
+  Mail,
+  Phone,
+  Bell,
+  Moon,
   Save,
-  LogOut
-} from "lucide-react";
-import { BrandMark } from "@/components/brand-mark";
+  LogOut,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react"
 
 export default function SettingsPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    notifications: true,
-    darkMode: true,
-  });
-  const [isSaving, setIsSaving] = useState(false);
+  const router = useRouter()
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  const [user, setUser] = useState<{ id: string; name?: string; email?: string; phone?: string } | null>(null)
+  const [form, setForm] = useState({ name: "", email: "", phone: "" })
+  const [notifications, setNotifications] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const parsed = JSON.parse(storedUser);
-      setUser(parsed);
-      setFormData({
-        name: parsed.name || "",
-        email: parsed.email || "",
-        phone: parsed.phone || "+62 812 3456 7890",
-        notifications: true,
-        darkMode: true,
-      });
+    setMounted(true)
+    const token = localStorage.getItem("token")
+    const stored = localStorage.getItem("user")
+    if (!token || !stored) {
+      router.push("/login")
+      return
     }
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = localStorage.getItem("token");
-    if (!token || !user) return;
-
-    setIsSaving(true);
     try {
-      const response = await fetch(apiUrl(`/users/${user.id}`), {
+      const parsed = JSON.parse(stored)
+      setUser(parsed)
+      setForm({ name: parsed.name || "", email: parsed.email || "", phone: parsed.phone || "" })
+    } catch {
+      router.push("/login")
+    }
+    setNotifications(localStorage.getItem("pref:notifications") !== "off")
+  }, [router])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const token = localStorage.getItem("token")
+    if (!token || !user) return
+    setIsSaving(true)
+    setMessage(null)
+    try {
+      const res = await fetch(apiUrl(`/users/${user.id}`), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          name: formData.name,
-          phone: formData.phone,
-        }),
-      });
-      const data = await response.json();
-      if (data.status === "success") {
-        const updatedUser = { ...user, ...data.data };
-        localStorage.setItem("user", JSON.stringify(updatedUser));
-        setUser(updatedUser);
-        alert("Pengaturan berhasil disimpan!");
+        body: JSON.stringify({ name: form.name, phone: form.phone }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        const updated = { ...user, ...(data?.data ?? data) }
+        localStorage.setItem("user", JSON.stringify(updated))
+        setUser(updated)
+        setMessage({ ok: true, text: "Perubahan tersimpan." })
       } else {
-        alert(data.message || "Gagal menyimpan");
+        setMessage({ ok: false, text: data?.message || "Gagal menyimpan." })
       }
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan saat menyimpan");
+    } catch {
+      setMessage({ ok: false, text: "Tidak dapat terhubung ke server." })
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/");
-  };
+  function toggleNotifications(checked: boolean) {
+    setNotifications(checked)
+    localStorage.setItem("pref:notifications", checked ? "on" : "off")
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    router.push("/")
+  }
 
   return (
-    <div className="p-6 sm:p-8 space-y-8 max-w-2xl mx-auto">
-      <Card className="glass-dark border-white/5 rounded-[2.5rem] p-8 space-y-8">
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold">Informasi Profil</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <form onSubmit={handleSubmit}>
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="name" className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Nama Lengkap
-                    </Label>
-                    <Input 
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      className="h-14 bg-white/5 border-white/5 rounded-2xl focus:ring-primary/50"
-                    />
-                  </div>
+    <div className="p-6 sm:p-8 max-w-2xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Pengaturan</h1>
+        <p className="text-sm text-muted-foreground">Kelola profil dan preferensi akun</p>
+      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      Email
-                    </Label>
-                    <Input 
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      disabled
-                      className="h-14 bg-white/5 border-white/5 rounded-2xl focus:ring-primary/50 opacity-75"
-                    />
-                  </div>
+      {/* Profile */}
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-border bg-card p-6 space-y-5">
+        <h2 className="font-semibold">Informasi Profil</h2>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="flex items-center gap-2">
-                      <Phone className="h-4 w-4" />
-                      Nomor Telepon
-                    </Label>
-                    <Input 
-                      id="phone"
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                      className="h-14 bg-white/5 border-white/5 rounded-2xl focus:ring-primary/50"
-                    />
-                  </div>
+        {message && (
+          <div
+            className={`flex items-center gap-2 text-sm rounded-xl px-3 py-2.5 ${
+              message.ok ? "text-success bg-success/10" : "text-destructive bg-destructive/10"
+            }`}
+          >
+            {message.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+            {message.text}
+          </div>
+        )}
 
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2">
-                      <Shield className="h-4 w-4" />
-                      Notifikasi Email
-                    </Label>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-500">Terima update transaksi via email</span>
-                      <Switch 
-                        checked={formData.notifications}
-                        onCheckedChange={(checked: boolean) => setFormData({ ...formData, notifications: checked })}
-                      />
-                    </div>
-                  </div>
+        <div className="space-y-2">
+          <Label htmlFor="name" className="flex items-center gap-2 text-sm">
+            <User className="h-4 w-4 text-muted-foreground" /> Nama Lengkap
+          </Label>
+          <Input
+            id="name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </div>
 
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2">
-                      <Moon className="h-4 w-4" />
-                      Mode Gelap
-                    </Label>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-500">Aktifkan tema gelap untuk kenyamanan mata</span>
-                      <Switch 
-                        checked={formData.darkMode}
-                        onCheckedChange={(checked: boolean) => setFormData({ ...formData, darkMode: checked })}
-                      />
-                    </div>
-                  </div>
+        <div className="space-y-2">
+          <Label htmlFor="email" className="flex items-center gap-2 text-sm">
+            <Mail className="h-4 w-4 text-muted-foreground" /> Email
+          </Label>
+          <Input id="email" type="email" value={form.email} disabled />
+          <p className="text-xs text-muted-foreground">Email tidak dapat diubah.</p>
+        </div>
 
-                  <div className="flex gap-4 pt-4">
-                    <Button type="submit" disabled={isSaving} className="flex-1 h-14 rounded-2xl shadow-glow">
-                      <Save className="mr-2 h-4 w-4" /> {isSaving ? "Menyimpan..." : "Simpan Perubahan"}
-                    </Button>
-                    <Button type="button" variant="outline" className="flex-1 h-14 rounded-2xl" onClick={handleLogout}>
-                      <LogOut className="mr-2 h-4 w-4" /> Keluar
-                    </Button>
-                  </div>
-                </div>
-              </form>
-            </CardContent>
-      </Card>
+        <div className="space-y-2">
+          <Label htmlFor="phone" className="flex items-center gap-2 text-sm">
+            <Phone className="h-4 w-4 text-muted-foreground" /> Nomor Telepon
+          </Label>
+          <Input
+            id="phone"
+            type="tel"
+            inputMode="numeric"
+            placeholder="081234567890"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+        </div>
+
+        <Button type="submit" disabled={isSaving} loading={isSaving} className="w-full">
+          <Save className="h-4 w-4" /> Simpan Perubahan
+        </Button>
+      </form>
+
+      {/* Preferences */}
+      <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+        <h2 className="font-semibold">Preferensi</h2>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Moon className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <div>
+              <p className="text-sm font-medium">Mode Gelap</p>
+              <p className="text-xs text-muted-foreground">Tema gelap untuk seluruh aplikasi.</p>
+            </div>
+          </div>
+          {mounted && (
+            <Switch
+              checked={resolvedTheme === "dark"}
+              onCheckedChange={(c: boolean) => setTheme(c ? "dark" : "light")}
+            />
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Bell className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <div>
+              <p className="text-sm font-medium">Notifikasi Email</p>
+              <p className="text-xs text-muted-foreground">
+                Preferensi tersimpan di perangkat ini.
+              </p>
+            </div>
+          </div>
+          <Switch checked={notifications} onCheckedChange={toggleNotifications} />
+        </div>
+      </div>
+
+      {/* Danger */}
+      <div className="rounded-2xl border border-border bg-card p-6 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium">Keluar dari akun</p>
+          <p className="text-xs text-muted-foreground">Sesi di perangkat ini akan diakhiri.</p>
+        </div>
+        <Button variant="outline" onClick={handleLogout} className="shrink-0">
+          <LogOut className="h-4 w-4" /> Keluar
+        </Button>
+      </div>
     </div>
-  );
+  )
 }

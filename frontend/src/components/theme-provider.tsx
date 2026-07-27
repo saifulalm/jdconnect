@@ -10,7 +10,7 @@ type Props = ThemeProviderProps & { children: React.ReactNode };
 
 export function ThemeProvider({ children, ...props }: Props) {
   return (
-    <NextThemesProviderWithChildren attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange {...props}>
+    <NextThemesProviderWithChildren attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange {...props}>
       {children}
     </NextThemesProviderWithChildren>
   );
