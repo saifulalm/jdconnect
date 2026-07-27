@@ -20,7 +20,8 @@ export class TaxService {
       .andWhere('(tax.effectiveTo IS NULL OR tax.effectiveTo >= :now)')
       .getOne();
     if (tax) {
-      return tax.rate;
+      // Postgres returns DECIMAL as string — normalise so callers always get a number.
+      return Number(tax.rate);
     }
     // fallback: get any tax ordered by effectiveFrom desc
     const taxSettings = await this.taxRepo.find({

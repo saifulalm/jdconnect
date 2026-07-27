@@ -45,6 +45,15 @@ interface Trx {
   provider?: string
 }
 
+interface BalanceRow {
+  id: string
+  amount: number
+  balanceAfter: number
+  type: string
+  description?: string
+  createdAt: string
+}
+
 // Icon names are supplied by the backend category config.
 const ICONS: Record<string, typeof Wallet> = {
   Smartphone,
@@ -67,6 +76,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [transactions, setTransactions] = useState<Trx[]>([])
+  const [balanceHistory, setBalanceHistory] = useState<BalanceRow[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [category, setCategory] = useState("")
   const [isLoading, setIsLoading] = useState(true)
@@ -99,6 +109,11 @@ export default function DashboardPage() {
       .then((r) => (r.ok ? r.json() : []))
       .then((list) => setTransactions(Array.isArray(list) ? list : []))
       .catch(() => setTransactions([]))
+
+    fetch(apiUrl("/users/balance/history"), { headers: auth })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => setBalanceHistory(Array.isArray(list) ? list : (list?.data ?? [])))
+      .catch(() => setBalanceHistory([]))
   }, [router])
 
   useEffect(() => {
@@ -150,9 +165,11 @@ export default function DashboardPage() {
           label="Saldo Akun"
           value={formatIDR(Number(user.balance) || 0)}
           foot={
-            <Button size="sm" variant="outline" className="mt-1" asChild>
-              <Link href="/dashboard/settings"><Plus className="h-4 w-4" /> Top Up</Link>
-            </Button>
+            <p className="text-xs text-muted-foreground">
+              {balanceHistory.length > 0
+                ? `${balanceHistory.length} mutasi terakhir · lihat di bawah`
+                : "Hubungi admin untuk isi saldo deposit."}
+            </p>
           }
         />
         <StatCard
@@ -273,6 +290,46 @@ export default function DashboardPage() {
                   </div>
                 </li>
               ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+          <h3 className="font-semibold">Mutasi Saldo</h3>
+          {balanceHistory.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <span className="grid place-items-center size-14 rounded-2xl bg-muted text-muted-foreground mx-auto">
+                <Wallet className="h-6 w-6" />
+              </span>
+              <p className="text-sm font-medium">Belum ada mutasi</p>
+              <p className="text-xs text-muted-foreground">
+                Deposit saldo lewat admin untuk transaksi tanpa bayar per order.
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {balanceHistory.slice(0, 5).map((b) => {
+                const credit = Number(b.amount) >= 0
+                return (
+                  <li key={b.id} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium capitalize">{b.type.replace(/_/g, " ")}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {b.description || new Date(b.createdAt).toLocaleDateString("id-ID")}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-medium ${credit ? "text-success" : "text-foreground"}`}>
+                        {credit ? "+" : "−"}
+                        {formatIDR(Math.abs(Number(b.amount)))}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Sisa {formatIDR(Number(b.balanceAfter))}
+                      </p>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
+import { TransactionService } from '../transaction/transaction.service';
+import { TransactionStatus } from '../transaction/entities/transaction.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -16,6 +18,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly userService: UserService,
+    private readonly transactionService: TransactionService,
   ) {}
 
   @Get('stats')
@@ -24,8 +27,20 @@ export class AdminController {
   }
 
   @Get('transactions')
-  async getTransactions() {
-    return this.adminService.getTransactions();
+  async getTransactions(@Query('limit') limit?: string) {
+    return this.adminService.getTransactions(limit ? Number(limit) : 100);
+  }
+
+  /** Manual status override for stuck orders. */
+  @Patch('transactions/:id/status')
+  async setTransactionStatus(@Param('id') id: string, @Body('status') status: TransactionStatus) {
+    return this.transactionService.updateStatus(id, status);
+  }
+
+  /** Re-run the supplier top-up for a paid order that failed to dispatch. */
+  @Post('transactions/:id/retry')
+  async retryTopup(@Param('id') id: string) {
+    return this.transactionService.executeTopup(id);
   }
 
   @Get('users')
