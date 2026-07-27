@@ -22,6 +22,49 @@ export class ProductService {
     });
   }
 
+  /**
+   * Paginated + filtered listing for the admin table. Returns inactive
+   * products too so admins can see and re-enable them.
+   */
+  async findPaginated(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category?: string;
+    provider?: string;
+  }): Promise<{ data: Product[]; total: number; page: number; limit: number; totalPages: number }> {
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(params.limit) || 10));
+
+    const qb = this.productRepository.createQueryBuilder('p');
+    if (params.category) qb.andWhere('p.category = :category', { category: params.category });
+    if (params.provider) qb.andWhere('p.provider = :provider', { provider: params.provider });
+    if (params.search) {
+      qb.andWhere('(p.name ILIKE :q OR p.sku ILIKE :q OR p.provider ILIKE :q)', {
+        q: `%${params.search}%`,
+      });
+    }
+
+    const [data, total] = await qb
+      .orderBy('p.provider', 'ASC')
+      .addOrderBy('p.price', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { data, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
+  }
+
+  /** Distinct provider list — powers admin filters. */
+  async findProviders(): Promise<string[]> {
+    const rows = await this.productRepository
+      .createQueryBuilder('p')
+      .select('DISTINCT p.provider', 'provider')
+      .orderBy('provider', 'ASC')
+      .getRawMany<{ provider: string }>();
+    return rows.map((r) => r.provider);
+  }
+
   findOne(id: string): Promise<Product | null> {
     return this.productRepository.findOne({ where: { id } });
   }

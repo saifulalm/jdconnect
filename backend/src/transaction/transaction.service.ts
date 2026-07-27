@@ -361,6 +361,26 @@ export class TransactionService {
     });
   }
 
+  /**
+   * Attach every unclaimed guest order placed with this number to a user.
+   * Ownership of the number is proven upstream with an OTP.
+   */
+  async claimGuestOrders(userId: string, phoneNumber: string): Promise<number> {
+    const digits = phoneNumber.replace(/\D/g, '');
+    const local = digits.startsWith('62') ? '0' + digits.slice(2) : digits;
+    const intl = local.startsWith('0') ? '62' + local.slice(1) : digits;
+
+    const result = await this.transactionRepository
+      .createQueryBuilder()
+      .update(Transaction)
+      .set({ userId })
+      .where('userId IS NULL')
+      .andWhere('phoneNumber IN (:...numbers)', { numbers: [local, intl] })
+      .execute();
+
+    return result.affected ?? 0;
+  }
+
   /** Public guest tracking: invoice + last 4 digits of phone must match. */
   async trackGuestOrder(invoiceNumber: string, phoneLast4: string): Promise<Transaction> {
     const trx = await this.findByInvoiceNumber(invoiceNumber);

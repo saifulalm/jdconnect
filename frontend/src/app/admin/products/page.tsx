@@ -58,6 +58,7 @@ export default function AdminProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const [limit] = useState(10);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteProductId, setDeleteProductId] = useState<string | null>(null);
@@ -111,7 +112,9 @@ export default function AdminProductsPage() {
         ...(selectedCategory && { category: selectedCategory }),
       });
 
-      const response = await fetch(apiUrl(`/products?${params.toString()}`), {
+      // Server-side pagination/search: the API applies page, limit, search
+      // and category, and reports the true total.
+      const response = await fetch(apiUrl(`/products/admin/list?${params.toString()}`), {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -124,26 +127,12 @@ export default function AdminProductsPage() {
       const raw = await response.json();
       const items: Product[] = Array.isArray(raw) ? raw : raw.data || [];
 
-      const filtered = items.filter((p) => {
-        const inCategory = selectedCategory ? p.category === selectedCategory : true;
-        const q = searchTerm.trim().toLowerCase();
-        const inSearch = q
-          ? `${p.name} ${p.sku} ${p.provider}`.toLowerCase().includes(q)
-          : true;
-        return inCategory && inSearch;
-      });
+      setProducts(items);
+      setTotalPages(raw.totalPages ?? 1);
+      setTotalItems(raw.total ?? items.length);
 
-      const computedTotalPages = Math.max(1, Math.ceil(filtered.length / limit));
-      const safePage = Math.min(page, computedTotalPages);
-      const start = (safePage - 1) * limit;
-      const pageItems = filtered.slice(start, start + limit);
-
-      if (safePage !== page) {
-        setPage(safePage);
-      }
-
-      setProducts(pageItems);
-      setTotalPages(computedTotalPages);
+      // Clamp if the current page fell past the end (e.g. after deleting).
+      if (raw.totalPages && page > raw.totalPages) setPage(raw.totalPages);
     } catch (err) {
       console.error("Error fetching products:", err);
       setError("Gagal memuat data produk. Silakan coba lagi.");
@@ -411,7 +400,7 @@ export default function AdminProductsPage() {
           {totalPages > 0 && (
             <div className="px-6 py-4 border-t border-border/60 bg-card/20 flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                Menampilkan <span className="font-medium text-foreground">{products.length}</span> dari <span className="font-medium text-foreground">{totalPages * limit}</span> data
+                Menampilkan <span className="font-medium text-foreground">{products.length}</span> dari <span className="font-medium text-foreground">{totalItems}</span> data
               </span>
               <div className="flex items-center space-x-2">
                 <Button

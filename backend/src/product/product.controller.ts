@@ -26,6 +26,32 @@ export class ProductController {
     return this.productService.findAll();
   }
 
+  /** Distinct providers — used by admin filters. Declared before ':id'. */
+  @Get('providers')
+  providers() {
+    return this.productService.findProviders();
+  }
+
+  /** Paginated admin listing (includes inactive products). */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
+  @Get('admin/list')
+  adminList(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('provider') provider?: string,
+  ) {
+    return this.productService.findPaginated({
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      category,
+      provider,
+    });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productService.findOne(id);

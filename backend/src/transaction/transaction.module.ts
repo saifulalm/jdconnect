@@ -12,6 +12,8 @@ import { UserModule } from '../user/user.module';
 import { NotificationModule } from '../notification/notification.module';
 import { SupplierModule } from '../supplier/supplier.module';
 import { PaymentModule } from '../payment/payment.module';
+import { OtpModule } from '../otp/otp.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { PaymentModule } from '../payment/payment.module';
     ProductModule,
     UserModule,
     NotificationModule,
+    OtpModule,
+    AuthModule,
     forwardRef(() => SupplierModule),
     forwardRef(() => PaymentModule),
   ],

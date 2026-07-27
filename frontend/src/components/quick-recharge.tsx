@@ -12,6 +12,7 @@ import {
   Gamepad2,
   Wallet,
   Hash,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import {
@@ -30,6 +31,12 @@ import {
   type OperatorPrefix,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import {
+  getRecentNumbers,
+  rememberNumber,
+  forgetNumber,
+  type RecentNumber,
+} from "@/lib/recent-numbers"
 
 // Icon names come from the backend category config.
 const ICONS: Record<string, LucideIcon> = {
@@ -76,6 +83,7 @@ export function QuickRecharge() {
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recent, setRecent] = useState<RecentNumber[]>([])
 
   // Storefront config is backend-driven (categories, field rules, prefixes).
   useEffect(() => {
@@ -113,6 +121,7 @@ export function QuickRecharge() {
   // Reset the destination fields when switching to a differently-shaped input.
   useEffect(() => {
     setServerId("")
+    setRecent(getRecentNumbers(categoryKey))
   }, [categoryKey])
 
   const operator = useMemo(
@@ -159,6 +168,11 @@ export function QuickRecharge() {
     try {
       // Phone-shaped inputs are normalised to local format; ids are kept as-is.
       const cleaned = category?.detectOperator ? normalizeMsisdn(customerNo) : digits
+      rememberNumber({
+        number: cleaned,
+        category: categoryKey,
+        label: operator || selected?.provider,
+      })
       const order = await createGuestOrder({
         productId: selected.id,
         phoneNumber: cleaned,
@@ -255,6 +269,36 @@ export function QuickRecharge() {
         </div>
         {category?.inputHelp && (
           <p className="text-xs text-muted-foreground">{category.inputHelp}</p>
+        )}
+
+        {/* One-tap re-fill from this device's history */}
+        {recent.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {recent.map((r) => (
+              <span
+                key={r.number}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-background pl-2.5 pr-1 h-8 text-xs"
+              >
+                <button
+                  onClick={() => setCustomerNo(r.number)}
+                  className="font-mono hover:text-primary transition-colors"
+                  title={r.label ? `${r.label} · dipakai sebelumnya` : "Dipakai sebelumnya"}
+                >
+                  {r.number}
+                </button>
+                <button
+                  onClick={() => {
+                    forgetNumber(r.number, categoryKey)
+                    setRecent(getRecentNumbers(categoryKey))
+                  }}
+                  className="grid place-items-center size-5 rounded text-muted-foreground hover:text-destructive"
+                  aria-label={`Hapus ${r.number}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
         )}
       </div>
 

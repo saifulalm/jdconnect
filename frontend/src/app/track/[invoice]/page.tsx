@@ -15,6 +15,8 @@ import {
 import QRCode from "qrcode"
 import { trackOrder, formatIDR, type OrderStatus } from "@/lib/api"
 import { BrandMark } from "@/components/brand-mark"
+import { ClaimAccount } from "@/components/claim-account"
+import { getLastNumber } from "@/lib/recent-numbers"
 
 const STATUS_UI: Record<string, { icon: typeof Clock; tone: string; label: string }> = {
   success: { icon: CheckCircle2, tone: "text-success", label: "Berhasil" },
@@ -32,6 +34,15 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [loggedIn, setLoggedIn] = useState(true) // assume yes until checked
+  // The API masks the number, so prefill the claim form from this device's
+  // checkout history instead.
+  const [fullPhone, setFullPhone] = useState("")
+
+  useEffect(() => {
+    setLoggedIn(Boolean(localStorage.getItem("token")))
+    setFullPhone(getLastNumber())
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -148,6 +159,13 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
             </div>
           </div>
         ) : null}
+
+        {/* Guests can attach this order (and past ones) to an account. */}
+        {order && !loggedIn && (
+          <div className="mt-4">
+            <ClaimAccount phoneNumber={fullPhone} />
+          </div>
+        )}
       </main>
     </div>
   )

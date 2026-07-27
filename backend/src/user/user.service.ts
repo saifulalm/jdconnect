@@ -33,6 +33,16 @@ export class UserService {
     return await this.userRepository.findOne({ where: { id } });
   }
 
+  /** Match on the stored phone in either local (08xx) or E.164 (62xx) form. */
+  async findByPhone(phone: string): Promise<User | null> {
+    const digits = phone.replace(/\D/g, '');
+    const local = digits.startsWith('62') ? '0' + digits.slice(2) : digits;
+    const intl = local.startsWith('0') ? '62' + local.slice(1) : digits;
+    return await this.userRepository.findOne({
+      where: [{ phone: local }, { phone: intl }],
+    });
+  }
+
   async findByApiKey(apiKey: string): Promise<User | null> {
     return await this.userRepository.findOne({ where: { apiKey } });
   }

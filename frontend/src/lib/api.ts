@@ -150,6 +150,28 @@ export async function requestOtp(phoneNumber: string, purpose = "checkout") {
   return handle<{ sent: boolean; debugCode?: string }>(res)
 }
 
+/**
+ * Loginless -> account: verify ownership of the destination number and
+ * attach every guest order placed with it. Returns a session token.
+ */
+export async function claimGuestOrders(body: {
+  phoneNumber: string
+  code: string
+  name?: string
+}): Promise<{
+  access_token: string
+  user: { id: string; email: string; name: string; role: string }
+  claimed: number
+  accountCreated: boolean
+}> {
+  const res = await fetch(apiUrl("/orders/claim"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  return handle(res)
+}
+
 export async function verifyOtp(phoneNumber: string, code: string, purpose = "checkout") {
   const res = await fetch(apiUrl("/otp/verify"), {
     method: "POST",
