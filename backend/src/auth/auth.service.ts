@@ -14,8 +14,12 @@ export class AuthService {
 
   async validateUser(email: string, password: string): Promise<any> {
     const user = await this.userService.findByEmail(email);
-    if (user && await this.userService.validatePassword(user, password)) {
-      const { password, ...result } = user;
+    if (user && (await this.userService.validatePassword(user, password))) {
+      // Deactivated accounts must not get a session on any login path.
+      if (!user.isActive) {
+        throw new UnauthorizedException('Akun dinonaktifkan. Hubungi admin.');
+      }
+      const { password: _pw, ...result } = user;
       return result;
     }
     return null;

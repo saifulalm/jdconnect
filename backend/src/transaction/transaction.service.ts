@@ -21,6 +21,7 @@ import { BalanceChangeType } from '../user/entities/balance-history.entity';
 import { SupplierService } from '../supplier/supplier.service';
 import { PaymentService } from '../payment/payment.service';
 import { NotificationService } from '../notification/notification.service';
+import { SmsService } from '../notification/sms.service';
 import { SupplierTopupResult } from '../supplier/adapters/supplier-adapter.interface';
 
 @Injectable()
@@ -40,6 +41,7 @@ export class TransactionService {
     @Inject(forwardRef(() => PaymentService))
     private paymentService: PaymentService,
     private notificationService: NotificationService,
+    private smsService: SmsService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -325,18 +327,34 @@ export class TransactionService {
     }
   }
 
+  /** Fire-and-forget receipts: email when given, WhatsApp/SMS to the buyer. */
   private notify(trx: Transaction, status: string): void {
     const email = trx.customerEmail;
-    if (!email) return;
-    this.notificationService
-      .sendTransactionEmail(email, {
-        invoiceNumber: trx.invoiceNumber,
-        product: trx.product?.name || trx.provider,
-        phoneNumber: trx.phoneNumber,
-        amount: Number(trx.price),
-        status,
-      })
-      .catch(() => undefined);
+    if (email) {
+      this.notificationService
+        .sendTransactionEmail(email, {
+          invoiceNumber: trx.invoiceNumber,
+          product: trx.product?.name || trx.provider,
+          phoneNumber: trx.phoneNumber,
+          amount: Number(trx.price),
+          status,
+        })
+        .catch(() => undefined);
+    }
+
+    // Only message real MSISDNs — game/PLN customer ids are not phone numbers.
+    const isPhone = /^0?8\d{7,13}$/.test(trx.phoneNumber.replace(/^62/, '0'));
+    if (isPhone) {
+      this.smsService
+        .sendTransactionSms(trx.phoneNumber, {
+          invoiceNumber: trx.invoiceNumber,
+          product: trx.product?.name || trx.provider,
+          amount: Number(trx.price),
+          status: status === 'success' ? 'berhasil' : 'gagal',
+          serialNumber: trx.serialNumber,
+        })
+        .catch(() => undefined);
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -172,6 +172,19 @@ export async function claimGuestOrders(body: {
   return handle(res)
 }
 
+/** Passwordless sign-in for an existing account. */
+export async function otpLogin(phoneNumber: string, code: string): Promise<{
+  access_token: string
+  user: { id: string; email: string; name: string; role: string }
+}> {
+  const res = await fetch(apiUrl("/auth/otp/login"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phoneNumber, code }),
+  })
+  return handle(res)
+}
+
 export async function verifyOtp(phoneNumber: string, code: string, purpose = "checkout") {
   const res = await fetch(apiUrl("/otp/verify"), {
     method: "POST",

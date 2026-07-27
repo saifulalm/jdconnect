@@ -1,40 +1,106 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export type MessagingDriver = 'whatsapp' | 'twilio' | 'none';
+
+/**
+ * Outbound messaging (OTP, transaction updates).
+ *
+ * Drivers, picked automatically from the environment:
+ *  - whatsapp: token-based WA gateway (Fonnte-compatible: POST target+message
+ *    with an Authorization token). Preferred in Indonesia — cheaper and
+ *    higher delivery rates than SMS.
+ *  - twilio: classic SMS.
+ *  - none: log only, so local development still shows the OTP.
+ */
 @Injectable()
 export class SmsService {
-  private enabled: boolean;
+  private readonly logger = new Logger(SmsService.name);
+  private readonly driver: MessagingDriver;
+  private readonly waToken: string;
+  private readonly waUrl: string;
+  private readonly twilioSid: string;
+  private readonly twilioToken: string;
+  private readonly twilioFrom: string;
 
   constructor(private configService: ConfigService) {
-    // Check if SMS service is configured
-    this.enabled = !!(
-      this.configService.get('TWILIO_SID') &&
-      this.configService.get('TWILIO_TOKEN')
+    this.waToken = this.configService.get<string>('WHATSAPP_TOKEN', '');
+    this.waUrl = this.configService.get<string>(
+      'WHATSAPP_API_URL',
+      'https://api.fonnte.com/send',
     );
+    this.twilioSid = this.configService.get<string>('TWILIO_SID', '');
+    this.twilioToken = this.configService.get<string>('TWILIO_TOKEN', '');
+    this.twilioFrom = this.configService.get<string>('TWILIO_FROM', '');
+
+    if (this.waToken) this.driver = 'whatsapp';
+    else if (this.twilioSid && this.twilioToken) this.driver = 'twilio';
+    else this.driver = 'none';
+
+    this.logger.log(`Messaging driver: ${this.driver}`);
+  }
+
+  get activeDriver(): MessagingDriver {
+    return this.driver;
+  }
+
+  /** WhatsApp gateways expect E.164 without "+" (62xxx). */
+  private toIntl(phone: string): string {
+    const digits = (phone || '').replace(/\D/g, '');
+    if (digits.startsWith('62')) return digits;
+    if (digits.startsWith('0')) return '62' + digits.slice(1);
+    return digits;
   }
 
   async sendSms(phoneNumber: string, message: string) {
-    if (!this.enabled) {
-      console.log('SMS service not configured, skipping...');
-      return { success: false, message: 'SMS service not configured' };
+    const target = this.toIntl(phoneNumber);
+
+    if (this.driver === 'none') {
+      this.logger.log(`[dev] message to ${target}: ${message}`);
+      return { success: false, message: 'Messaging service not configured' };
     }
 
     try {
-      // Twilio integration example
-      // In production, install twilio package and use official SDK
-      console.log(`Sending SMS to ${phoneNumber}: ${message}`);
-      
-      return {
-        success: true,
-        messageId: `sms_${Date.now()}`,
-        message: 'SMS sent successfully',
-      };
-    } catch (error) {
-      console.error('SMS send error:', error);
-      return {
-        success: false,
-        error: error.message,
-      };
+      if (this.driver === 'whatsapp') {
+        const res = await fetch(this.waUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: this.waToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ target, message }),
+        });
+        const json: any = await res.json().catch(() => ({}));
+        if (!res.ok || json?.status === false) {
+          throw new Error(json?.reason || `WhatsApp gateway HTTP ${res.status}`);
+        }
+        return { success: true, messageId: json?.id?.[0] ?? `wa_${Date.now()}`, driver: 'whatsapp' };
+      }
+
+      // Twilio REST API — no SDK needed.
+      const auth = Buffer.from(`${this.twilioSid}:${this.twilioToken}`).toString('base64');
+      const body = new URLSearchParams({
+        To: `+${target}`,
+        From: this.twilioFrom,
+        Body: message,
+      });
+      const res = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${this.twilioSid}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body,
+        },
+      );
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || `Twilio HTTP ${res.status}`);
+      return { success: true, messageId: json?.sid, driver: 'twilio' };
+    } catch (error: any) {
+      this.logger.error(`Message send failed to ${target}: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
 
@@ -45,23 +111,26 @@ export class SmsService {
       product: string;
       amount: number;
       status: string;
+      serialNumber?: string;
     },
   ) {
-    const message = `PulsaKu: Transaksi ${transactionData.product} senilai Rp ${transactionData.amount.toLocaleString('id-ID')} ${transactionData.status}. Inv: ${transactionData.invoiceNumber}`;
-    return this.sendSms(phoneNumber, message);
+    const lines = [
+      `*JDConnect* — transaksi ${transactionData.status}`,
+      `Produk: ${transactionData.product}`,
+      `Total: Rp ${transactionData.amount.toLocaleString('id-ID')}`,
+      `Invoice: ${transactionData.invoiceNumber}`,
+    ];
+    if (transactionData.serialNumber) lines.push(`SN/Token: ${transactionData.serialNumber}`);
+    return this.sendSms(phoneNumber, lines.join('\n'));
   }
 
   async sendOtpSms(phoneNumber: string, otp: string) {
-    const message = `PulsaKu: Kode OTP Anda adalah ${otp}. Jangan berikan kode ini kepada siapapun. Berlaku 5 menit.`;
+    const message = `Kode OTP JDConnect kamu: *${otp}*\nBerlaku 5 menit. Jangan berikan kode ini kepada siapa pun.`;
     return this.sendSms(phoneNumber, message);
   }
 
-  async sendPaymentReminderSms(
-    phoneNumber: string,
-    invoiceNumber: string,
-    amount: number,
-  ) {
-    const message = `PulsaKu: Reminder pembayaran invoice ${invoiceNumber} sebesar Rp ${amount.toLocaleString('id-ID')}. Segera bayar untuk memproses transaksi.`;
+  async sendPaymentReminderSms(phoneNumber: string, invoiceNumber: string, amount: number) {
+    const message = `JDConnect: pembayaran invoice ${invoiceNumber} sebesar Rp ${amount.toLocaleString('id-ID')} belum diterima. Segera selesaikan agar pesanan diproses.`;
     return this.sendSms(phoneNumber, message);
   }
 }

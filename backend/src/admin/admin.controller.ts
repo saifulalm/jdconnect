@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { TransactionService } from '../transaction/transaction.service';
 import { TransactionStatus } from '../transaction/entities/transaction.entity';
@@ -7,6 +19,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/roles/role.enum';
 import { AdminTopupDto } from './dto/admin-topup.dto';
+import { AdminUpdateUserDto } from '../user/dto/update-user.dto';
 import { UserService } from '../user/user.service';
 import { BalanceChangeType } from '../user/entities/balance-history.entity';
 import * as crypto from 'crypto';
@@ -51,6 +64,26 @@ export class AdminController {
   @Get('revenue')
   async getRevenue() {
     return this.adminService.getRevenue();
+  }
+
+  /**
+   * Privileged user changes (role, activation). Separate from the
+   * self-service PATCH /users/:id, which must never accept these fields.
+   */
+  @Patch('users/:id')
+  async updateUser(
+    @Param('id') id: string,
+    @Body() dto: AdminUpdateUserDto,
+    @Req() req,
+  ) {
+    // Don't let an admin lock themselves out or drop their own privileges.
+    if (id === req.user.id && (dto.isActive === false || dto.role)) {
+      throw new BadRequestException('Tidak dapat mengubah role atau status akun sendiri');
+    }
+    const user = await this.userService.update(id, dto);
+    if (!user) throw new NotFoundException('User not found');
+    const { password, ...safe } = user as any;
+    return { status: 'success', data: safe };
   }
 
   @Post('topup')

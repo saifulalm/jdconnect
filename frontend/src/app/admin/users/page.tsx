@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 
 type AdminUser = {
@@ -41,6 +43,8 @@ export default function AdminUsersPage() {
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState<AdminUser | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [selfId, setSelfId] = useState("");
 
   const authHeaders = useCallback((): HeadersInit => {
     const token = localStorage.getItem("token");
@@ -74,10 +78,12 @@ export default function AdminUsersPage() {
       return;
     }
     try {
-      if (!isAdminRole(JSON.parse(user).role)) {
+      const parsed = JSON.parse(user);
+      if (!isAdminRole(parsed.role)) {
         router.push("/dashboard");
         return;
       }
+      setSelfId(parsed.id);
     } catch {
       router.push("/login");
       return;
@@ -103,6 +109,34 @@ export default function AdminUsersPage() {
     } else {
       const msg = Array.isArray(data.message) ? data.message.join(", ") : data.message;
       setNotice({ ok: false, text: msg || "Top up gagal." });
+    }
+  }
+
+  /** Privileged change — admin-only route, never the self-service one. */
+  async function updateUser(u: AdminUser, patch: { role?: string; isActive?: boolean }) {
+    setBusyId(u.id)
+    setNotice(null)
+    try {
+      const res = await fetch(apiUrl(`/admin/users/${u.id}`), {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setNotice({
+          ok: true,
+          text:
+            patch.isActive === undefined
+              ? `Role ${u.name} diubah ke ${patch.role}.`
+              : `${u.name} ${patch.isActive ? "diaktifkan" : "dinonaktifkan"}.`,
+        })
+        await load()
+      } else {
+        setNotice({ ok: false, text: data?.message || "Perubahan gagal." })
+      }
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -182,6 +216,7 @@ export default function AdminUsersPage() {
                   <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
                     <th className="px-5 py-3.5 font-medium">Pengguna</th>
                     <th className="px-5 py-3.5 font-medium">Role</th>
+                    <th className="px-5 py-3.5 font-medium">Status</th>
                     <th className="px-5 py-3.5 font-medium text-right">Saldo</th>
                     <th className="px-5 py-3.5 font-medium text-right">Transaksi</th>
                     <th className="px-5 py-3.5 font-medium text-right">Aksi</th>
@@ -202,8 +237,27 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted capitalize">
-                          {u.role || "customer"}
+                        {/* Self-management is blocked server-side too. */}
+                        <select
+                          value={u.role || "customer"}
+                          disabled={u.id === selfId || busyId === u.id}
+                          onChange={(e) => updateUser(u, { role: e.target.value })}
+                          className="h-8 rounded-lg border border-border bg-background px-2 text-xs capitalize disabled:opacity-60"
+                        >
+                          <option value="customer">customer</option>
+                          <option value="admin">admin</option>
+                          <option value="superaccess">superaccess</option>
+                        </select>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            u.isActive === false
+                              ? "bg-destructive/10 text-destructive"
+                              : "bg-success/10 text-success"
+                          }`}
+                        >
+                          {u.isActive === false ? "Nonaktif" : "Aktif"}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-right font-medium whitespace-nowrap">
@@ -212,10 +266,27 @@ export default function AdminUsersPage() {
                       <td className="px-5 py-3.5 text-right text-muted-foreground">
                         {u.transactions ?? 0}
                       </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <Button size="sm" variant="outline" onClick={() => setTarget(u)}>
-                          <Plus className="h-3.5 w-3.5" /> Top Up
-                        </Button>
+                      <td className="px-5 py-3.5">
+                        <div className="flex justify-end gap-1.5">
+                          <Button size="sm" variant="outline" onClick={() => setTarget(u)}>
+                            <Plus className="h-3.5 w-3.5" /> Top Up
+                          </Button>
+                          {u.id !== selfId && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busyId === u.id}
+                              onClick={() => updateUser(u, { isActive: u.isActive === false })}
+                              title={u.isActive === false ? "Aktifkan akun" : "Nonaktifkan akun"}
+                            >
+                              {u.isActive === false ? (
+                                <UserCheck className="h-3.5 w-3.5" />
+                              ) : (
+                                <UserX className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

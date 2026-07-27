@@ -11,6 +11,8 @@ import {
   ArrowLeft,
   Receipt,
   Copy,
+  Share2,
+  RefreshCw,
 } from "lucide-react"
 import QRCode from "qrcode"
 import { trackOrder, formatIDR, type OrderStatus } from "@/lib/api"
@@ -38,6 +40,7 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
   // The API masks the number, so prefill the claim form from this device's
   // checkout history instead.
   const [fullPhone, setFullPhone] = useState("")
+  const [shared, setShared] = useState(false)
 
   useEffect(() => {
     setLoggedIn(Boolean(localStorage.getItem("token")))
@@ -67,6 +70,39 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
     const t = setInterval(refresh, 4000)
     return () => clearInterval(t)
   }, [order, refresh])
+
+  /** Share the receipt via the native sheet, falling back to the clipboard. */
+  async function shareReceipt() {
+    if (!order) return
+    const text = [
+      `Struk JDConnect`,
+      `Invoice: ${order.invoiceNumber}`,
+      `Produk: ${order.product ?? order.provider}`,
+      `Tujuan: ${order.phoneNumber}`,
+      `Total: ${formatIDR(order.amount)}`,
+      `Status: ${order.status}`,
+      order.serialNumber ? `SN/Token: ${order.serialNumber}` : "",
+      typeof window !== "undefined" ? window.location.href : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Struk JDConnect", text })
+        return
+      }
+    } catch {
+      // User dismissed the sheet, or sharing is unavailable — fall through.
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      setShared(true)
+      setTimeout(() => setShared(false), 2000)
+    } catch {
+      // Clipboard blocked — nothing else to do.
+    }
+  }
 
   // Render the dynamic QRIS locally while payment is outstanding.
   useEffect(() => {
@@ -149,12 +185,32 @@ export default function TrackPage({ params }: { params: Promise<{ invoice: strin
               {order.message && <Row label="Catatan" value={order.message} />}
             </dl>
 
-            <div className="p-6 pt-0">
+            <div className="p-6 pt-0 grid grid-cols-2 gap-2 print:hidden">
               <button
                 onClick={refresh}
-                className="w-full h-11 rounded-xl border border-border hover:bg-muted text-sm font-medium inline-flex items-center justify-center gap-2"
+                className="h-11 rounded-xl border border-border hover:bg-muted text-sm font-medium inline-flex items-center justify-center gap-2"
               >
-                <Receipt className="h-4 w-4" /> Perbarui Status
+                <RefreshCw className="h-4 w-4" /> Perbarui
+              </button>
+              <button
+                onClick={shareReceipt}
+                className="h-11 rounded-xl border border-border hover:bg-muted text-sm font-medium inline-flex items-center justify-center gap-2"
+              >
+                {shared ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-success" /> Tersalin
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="h-4 w-4" /> Bagikan
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="col-span-2 h-11 rounded-xl border border-border hover:bg-muted text-sm font-medium inline-flex items-center justify-center gap-2"
+              >
+                <Receipt className="h-4 w-4" /> Cetak / Simpan PDF
               </button>
             </div>
           </div>
