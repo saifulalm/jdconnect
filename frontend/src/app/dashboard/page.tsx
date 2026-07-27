@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { apiUrl, getProducts, formatIDR, type Product } from "@/lib/api"
+import {
+  apiUrl,
+  getProducts,
+  getCategories,
+  formatIDR,
+  type Product,
+  type Category,
+} from "@/lib/api"
 import {
   Smartphone,
   Wifi,
@@ -38,13 +45,14 @@ interface Trx {
   provider?: string
 }
 
-const CATEGORIES = [
-  { id: "pulsa", name: "Pulsa", icon: Smartphone },
-  { id: "data", name: "Data", icon: Wifi },
-  { id: "pln", name: "PLN", icon: Zap },
-  { id: "game", name: "Game", icon: Gamepad2 },
-  { id: "ewallet", name: "E-Wallet", icon: Wallet },
-]
+// Icon names are supplied by the backend category config.
+const ICONS: Record<string, typeof Wallet> = {
+  Smartphone,
+  Wifi,
+  Zap,
+  Gamepad2,
+  Wallet,
+}
 
 const STATUS_TONE: Record<string, string> = {
   success: "bg-success/10 text-success",
@@ -59,7 +67,8 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [transactions, setTransactions] = useState<Trx[]>([])
-  const [category, setCategory] = useState("pulsa")
+  const [categories, setCategories] = useState<Category[]>([])
+  const [category, setCategory] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [productsLoading, setProductsLoading] = useState(true)
 
@@ -93,6 +102,16 @@ export default function DashboardPage() {
   }, [router])
 
   useEffect(() => {
+    getCategories()
+      .then((c) => {
+        setCategories(c)
+        if (c.length) setCategory((k) => k || c[0].key)
+      })
+      .catch(() => setCategories([]))
+  }, [])
+
+  useEffect(() => {
+    if (!category) return
     setProductsLoading(true)
     getProducts(category)
       .then((p) => setProducts(p.filter((x) => x.isActive)))
@@ -159,19 +178,22 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">Layanan Digital</h2>
           <div className="flex gap-1 bg-muted p-1 rounded-2xl overflow-x-auto">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setCategory(c.id)}
-                className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
-                  category === c.id
-                    ? "bg-card text-foreground shadow-soft"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <c.icon className="h-4 w-4" /> {c.name}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const Icon = ICONS[c.icon] ?? Zap
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => setCategory(c.key)}
+                  className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
+                    category === c.key
+                      ? "bg-card text-foreground shadow-soft"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" /> {c.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 

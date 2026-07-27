@@ -45,9 +45,35 @@ export type OrderStatus = {
 }
 
 export type PaymentConfig = {
-  gateway: "midtrans" | "mock"
+  gateway: "midtrans" | "qris" | "mock"
   clientKey: string
   isProduction: boolean
+}
+
+/** Storefront category config — served by the backend, admin-editable. */
+export type Category = {
+  id: string
+  key: string
+  label: string
+  description?: string
+  icon: string
+  inputLabel: string
+  inputPlaceholder: string
+  inputHelp?: string
+  minLength: number
+  maxLength: number
+  detectOperator: boolean
+  requiresServerId: boolean
+  serverIdLabel?: string
+  sortOrder: number
+  isActive: boolean
+}
+
+export type OperatorPrefix = {
+  id: string
+  prefix: string
+  provider: string
+  isActive: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -73,9 +99,20 @@ export async function getPaymentConfig(): Promise<PaymentConfig> {
   return handle<PaymentConfig>(res)
 }
 
+export async function getCategories(): Promise<Category[]> {
+  const res = await fetch(apiUrl("/catalog/categories"), { cache: "no-store" })
+  return handle<Category[]>(res)
+}
+
+export async function getOperatorPrefixes(): Promise<OperatorPrefix[]> {
+  const res = await fetch(apiUrl("/catalog/prefixes"), { cache: "no-store" })
+  return handle<OperatorPrefix[]>(res)
+}
+
 export async function createGuestOrder(body: {
   productId: string
   phoneNumber: string
+  serverId?: string
   customerEmail?: string
   customerName?: string
 }): Promise<GuestOrderResponse> {
@@ -130,21 +167,27 @@ export function formatIDR(value: number): string {
   }).format(value)
 }
 
-/** Detect Indonesian operator from MSISDN prefix. */
-export function detectOperator(phone: string): string | null {
-  const p = phone.replace(/\D/g, "").replace(/^62/, "0")
-  if (!/^08\d{2}/.test(p)) return null
-  const pre = p.slice(0, 4)
-  const map: Record<string, string[]> = {
-    Telkomsel: ["0811", "0812", "0813", "0821", "0822", "0823", "0851", "0852", "0853"],
-    Indosat: ["0814", "0815", "0816", "0855", "0856", "0857", "0858"],
-    XL: ["0817", "0818", "0819", "0859", "0877", "0878"],
-    Tri: ["0895", "0896", "0897", "0898", "0899"],
-    Smartfren: ["0881", "0882", "0883", "0884", "0885", "0886", "0887", "0888", "0889"],
-    Axis: ["0831", "0832", "0833", "0838"],
+/** Normalise an Indonesian MSISDN to local format (leading 0). */
+export function normalizeMsisdn(input: string): string {
+  let p = (input || "").replace(/\D/g, "")
+  if (p.startsWith("62")) p = "0" + p.slice(2)
+  if (p && !p.startsWith("0")) p = "0" + p
+  return p
+}
+
+/**
+ * Detect the operator from a backend-managed prefix table (admin-editable).
+ * Longest-prefix wins so 4-digit entries beat 3-digit ones.
+ */
+export function detectOperator(phone: string, prefixes: OperatorPrefix[]): string | null {
+  const p = normalizeMsisdn(phone)
+  if (p.length < 4) return null
+  let best: OperatorPrefix | null = null
+  for (const row of prefixes) {
+    if (!row.isActive) continue
+    if (p.startsWith(row.prefix) && (!best || row.prefix.length > best.prefix.length)) {
+      best = row
+    }
   }
-  for (const [op, prefixes] of Object.entries(map)) {
-    if (prefixes.includes(pre)) return op
-  }
-  return null
+  return best?.provider ?? null
 }

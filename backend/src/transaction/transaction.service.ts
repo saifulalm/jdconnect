@@ -109,6 +109,7 @@ export class TransactionService {
   async createGuestOrder(dto: {
     productId: string;
     phoneNumber: string;
+    serverId?: string;
     customerEmail?: string;
     customerName?: string;
     userId?: string;
@@ -142,7 +143,7 @@ export class TransactionService {
       taxAmount,
       paymentStatus: PaymentStatus.PENDING,
       status: TransactionStatus.PENDING,
-      metadata: {},
+      metadata: dto.serverId ? { server_id: dto.serverId } : {},
     } as Partial<Transaction>);
     transaction = await this.transactionRepository.save(transaction);
 
@@ -244,7 +245,10 @@ export class TransactionService {
     try {
       result = await this.supplierService.topUp({
         sku,
-        customerNo: trx.phoneNumber,
+        // Game top-ups are addressed as "<userId><serverId>" upstream.
+        customerNo: trx.metadata?.server_id
+          ? `${trx.phoneNumber}${trx.metadata.server_id}`
+          : trx.phoneNumber,
         refId,
       });
     } catch (err: any) {

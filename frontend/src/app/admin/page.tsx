@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { BrandMark } from "@/components/brand-mark";
 import { BRAND } from "@/lib/brand";
 import { apiUrl } from "@/lib/api";
-import { Users, CreditCard, DollarSign, TrendingUp, Package, LogOut, RefreshCw, LayoutDashboard, Settings, FileText, ChevronRight } from "lucide-react";
+import { Users, CreditCard, DollarSign, TrendingUp, Package, LogOut, RefreshCw, LayoutDashboard, Settings, FileText, ChevronRight, Layers } from "lucide-react";
 
 interface Stats {
   totalUsers: number;
@@ -149,6 +149,10 @@ export default function AdminPage() {
           <Link href="/admin/transactions" className="flex items-center px-3 py-2.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-xl font-medium text-sm transition-colors">
             <CreditCard className="h-4 w-4 mr-3" />
             Transaksi
+          </Link>
+          <Link href="/admin/catalog" className="flex items-center px-3 py-2.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-xl font-medium text-sm transition-colors">
+            <Layers className="h-4 w-4 mr-3" />
+            Katalog
           </Link>
         </div>
         <div className="p-4 border-t border-border/60">

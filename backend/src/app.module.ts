@@ -16,6 +16,7 @@ import { ProductModule } from './product/product.module';
 import { TaxModule } from './tax/tax.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { OtpModule } from './otp/otp.module';
+import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { OtpModule } from './otp/otp.module';
     TaxModule,
     SupplierModule,
     OtpModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

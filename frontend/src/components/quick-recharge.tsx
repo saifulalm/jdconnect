@@ -2,25 +2,44 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Phone, Loader2, CheckCircle2, AlertCircle, Zap } from "lucide-react"
+import {
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Zap,
+  Smartphone,
+  Wifi,
+  Gamepad2,
+  Wallet,
+  Hash,
+  type LucideIcon,
+} from "lucide-react"
 import {
   getProducts,
   getPaymentConfig,
+  getCategories,
+  getOperatorPrefixes,
   createGuestOrder,
   mockPay,
   formatIDR,
   detectOperator,
+  normalizeMsisdn,
   type Product,
   type PaymentConfig,
+  type Category,
+  type OperatorPrefix,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-const CATEGORIES = [
-  { key: "pulsa", label: "Pulsa" },
-  { key: "data", label: "Paket Data" },
-  { key: "pln", label: "Token PLN" },
-  { key: "game", label: "Game" },
-] as const
+// Icon names come from the backend category config.
+const ICONS: Record<string, LucideIcon> = {
+  Smartphone,
+  Wifi,
+  Zap,
+  Gamepad2,
+  Wallet,
+  Hash,
+}
 
 declare global {
   interface Window {
@@ -45,8 +64,11 @@ function loadSnap(clientKey: string, isProduction: boolean): Promise<void> {
 
 export function QuickRecharge() {
   const router = useRouter()
-  const [category, setCategory] = useState<string>("pulsa")
-  const [phone, setPhone] = useState("")
+  const [categories, setCategories] = useState<Category[]>([])
+  const [prefixes, setPrefixes] = useState<OperatorPrefix[]>([])
+  const [categoryKey, setCategoryKey] = useState<string>("")
+  const [customerNo, setCustomerNo] = useState("")
+  const [serverId, setServerId] = useState("")
   const [email, setEmail] = useState("")
   const [products, setProducts] = useState<Product[]>([])
   const [selected, setSelected] = useState<Product | null>(null)
@@ -55,15 +77,29 @@ export function QuickRecharge() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Storefront config is backend-driven (categories, field rules, prefixes).
   useEffect(() => {
     getPaymentConfig().then(setConfig).catch(() => undefined)
+    getOperatorPrefixes().then(setPrefixes).catch(() => setPrefixes([]))
+    getCategories()
+      .then((c) => {
+        setCategories(c)
+        if (c.length) setCategoryKey((k) => k || c[0].key)
+      })
+      .catch(() => setCategories([]))
   }, [])
 
+  const category = useMemo(
+    () => categories.find((c) => c.key === categoryKey) ?? null,
+    [categories, categoryKey],
+  )
+
   useEffect(() => {
+    if (!categoryKey) return
     let active = true
     setLoadingProducts(true)
     setSelected(null)
-    getProducts(category)
+    getProducts(categoryKey)
       .then((p) => {
         if (active) setProducts(p.filter((x) => x.isActive).sort((a, b) => a.price - b.price))
       })
@@ -72,19 +108,33 @@ export function QuickRecharge() {
     return () => {
       active = false
     }
-  }, [category])
+  }, [categoryKey])
 
-  const operator = useMemo(() => detectOperator(phone), [phone])
-  const phoneValid = /^[0-9]{4,16}$/.test(phone.replace(/\D/g, ""))
+  // Reset the destination fields when switching to a differently-shaped input.
+  useEffect(() => {
+    setServerId("")
+  }, [categoryKey])
 
-  // For pulsa/data, narrow to the detected operator when known.
+  const operator = useMemo(
+    () => (category?.detectOperator ? detectOperator(customerNo, prefixes) : null),
+    [customerNo, prefixes, category],
+  )
+
+  const digits = customerNo.replace(/\D/g, "")
+  const minLen = category?.minLength ?? 4
+  const maxLen = category?.maxLength ?? 16
+  const numberValid = digits.length >= minLen && digits.length <= maxLen
+  const serverValid = !category?.requiresServerId || /^[0-9]{1,12}$/.test(serverId)
+  const canSubmit = Boolean(selected) && numberValid && serverValid && !submitting
+
+  // When the operator is known, narrow to its products.
   const shown = useMemo(() => {
-    if ((category === "pulsa" || category === "data") && operator) {
+    if (operator) {
       const f = products.filter((p) => p.provider.toLowerCase().includes(operator.toLowerCase()))
       return f.length ? f : products
     }
     return products
-  }, [products, operator, category])
+  }, [products, operator])
 
   // Group by provider so long lists stay scannable.
   const groups = useMemo(() => {
@@ -99,15 +149,20 @@ export function QuickRecharge() {
 
   async function handleBuy() {
     setError(null)
-    if (!phoneValid) return setError("Masukkan nomor tujuan yang valid")
+    if (!numberValid) {
+      return setError(`${category?.inputLabel ?? "Nomor tujuan"} harus ${minLen}-${maxLen} digit`)
+    }
+    if (!serverValid) return setError(`${category?.serverIdLabel ?? "Server ID"} tidak valid`)
     if (!selected) return setError("Pilih nominal terlebih dahulu")
 
     setSubmitting(true)
     try {
-      const cleaned = phone.replace(/\D/g, "")
+      // Phone-shaped inputs are normalised to local format; ids are kept as-is.
+      const cleaned = category?.detectOperator ? normalizeMsisdn(customerNo) : digits
       const order = await createGuestOrder({
         productId: selected.id,
         phoneNumber: cleaned,
+        serverId: category?.requiresServerId ? serverId : undefined,
         customerEmail: email || undefined,
       })
       const last4 = cleaned.slice(-4)
@@ -136,48 +191,60 @@ export function QuickRecharge() {
     }
   }
 
+  const CategoryIcon = category ? ICONS[category.icon] ?? Zap : Zap
+
   return (
     <div className="rounded-3xl border border-border bg-card shadow-glow p-6 sm:p-7 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold tracking-tight">Isi Ulang Cepat</h3>
-          <p className="text-sm text-muted-foreground">Tanpa daftar — bayar & terima instan</p>
+          <p className="text-sm text-muted-foreground">
+            {category?.description || "Tanpa daftar — bayar & terima instan"}
+          </p>
         </div>
-        <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary">
-          <Zap className="h-5 w-5" />
+        <span className="grid place-items-center size-10 rounded-xl bg-primary/10 text-primary shrink-0">
+          <CategoryIcon className="h-5 w-5" />
         </span>
       </div>
 
-      {/* Category tabs */}
-      <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-muted p-1.5">
-        {CATEGORIES.map((c) => (
-          <button
-            key={c.key}
-            onClick={() => setCategory(c.key)}
-            className={cn(
-              "h-9 rounded-xl text-xs font-medium transition-colors",
-              category === c.key
-                ? "bg-card text-foreground shadow-soft"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {c.label}
-          </button>
-        ))}
+      {/* Category tabs (backend-managed) */}
+      <div className="flex gap-1.5 rounded-2xl bg-muted p-1.5 overflow-x-auto">
+        {categories.length === 0 ? (
+          <div className="h-9 flex-1 grid place-items-center text-xs text-muted-foreground">
+            Memuat kategori...
+          </div>
+        ) : (
+          categories.map((c) => {
+            const Icon = ICONS[c.icon] ?? Zap
+            return (
+              <button
+                key={c.key}
+                onClick={() => setCategoryKey(c.key)}
+                className={cn(
+                  "flex-1 min-w-fit h-9 px-3 rounded-xl text-xs font-medium transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap",
+                  categoryKey === c.key
+                    ? "bg-card text-foreground shadow-soft"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {c.label}
+              </button>
+            )
+          })
+        )}
       </div>
 
-      {/* Destination number */}
+      {/* Destination number — label/placeholder/rules come from the category */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">
-          {category === "pln" ? "ID Pelanggan / Meter" : "Nomor Tujuan"}
-        </label>
+        <label className="text-sm font-medium">{category?.inputLabel ?? "Nomor Tujuan"}</label>
         <div className="relative">
-          <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <CategoryIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
             inputMode="numeric"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder={category === "pln" ? "1234567890" : "0812 3456 7890"}
+            value={customerNo}
+            onChange={(e) => setCustomerNo(e.target.value)}
+            placeholder={category?.inputPlaceholder ?? "0812 3456 7890"}
             className="w-full h-12 pl-10 pr-24 rounded-2xl border border-input bg-background text-base outline-none focus:ring-2 focus:ring-ring/50"
           />
           {operator && (
@@ -186,9 +253,29 @@ export function QuickRecharge() {
             </span>
           )}
         </div>
+        {category?.inputHelp && (
+          <p className="text-xs text-muted-foreground">{category.inputHelp}</p>
+        )}
       </div>
 
-      {/* Denominations */}
+      {/* Server / zone id (game categories) */}
+      {category?.requiresServerId && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">{category.serverIdLabel || "Server ID"}</label>
+          <div className="relative">
+            <Hash className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <input
+              inputMode="numeric"
+              value={serverId}
+              onChange={(e) => setServerId(e.target.value)}
+              placeholder="1234"
+              className="w-full h-12 pl-10 pr-3.5 rounded-2xl border border-input bg-background text-base outline-none focus:ring-2 focus:ring-ring/50"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Denominations grouped by provider */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Pilih Nominal</label>
         {loadingProducts ? (
@@ -259,7 +346,7 @@ export function QuickRecharge() {
 
       <button
         onClick={handleBuy}
-        disabled={submitting || !phoneValid || !selected}
+        disabled={!canSubmit}
         className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base shadow-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.99] flex items-center justify-center gap-2"
       >
         {submitting ? (
@@ -273,7 +360,9 @@ export function QuickRecharge() {
       </button>
 
       <p className="text-center text-xs text-muted-foreground">
-        Pembayaran aman via {config?.gateway === "midtrans" ? "Midtrans" : "gateway"} · QRIS, VA, e-wallet
+        Pembayaran aman via{" "}
+        {config?.gateway === "midtrans" ? "Midtrans" : config?.gateway === "qris" ? "QRIS" : "gateway"}{" "}
+        · QRIS, VA, e-wallet
       </p>
     </div>
   )
