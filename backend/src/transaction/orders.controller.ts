@@ -60,7 +60,7 @@ export class OrdersController {
   }
 
   @UseGuards(OptionalJwtAuthGuard)
-  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Post('guest')
   async createGuestOrder(@Body() dto: CreateGuestOrderDto, @Req() req: any) {
     const result = await this.transactionService.createGuestOrder({
@@ -76,7 +76,10 @@ export class OrdersController {
     };
   }
 
-  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  // The tracking page polls every 4s while an order settles (~15 req/min per
+  // visitor), so a shared office IP hits a low cap quickly. Read-only and
+  // guarded by the phone-digit check.
+  @Throttle({ default: { limit: 300, ttl: 60000 } })
   @Get('track/:invoiceNumber')
   async track(
     @Param('invoiceNumber') invoiceNumber: string,

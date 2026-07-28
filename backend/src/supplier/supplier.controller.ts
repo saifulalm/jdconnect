@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { SupplierService } from './supplier.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -37,6 +38,10 @@ export class SupplierController {
    * Async callback from supplier (e.g. Digiflazz) when a top-up settles.
    * Public endpoint — authenticity comes from the signed payload.
    */
+  // Same reasoning as the payment callback: supplier settlement bursts come
+  // from one address and must not be dropped. Signature verification is the
+  // real gate here.
+  @Throttle({ default: { limit: 1200, ttl: 60000 } })
   @Post('callback')
   async callback(
     @Body() payload: any,

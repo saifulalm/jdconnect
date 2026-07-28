@@ -7,6 +7,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import * as crypto from 'crypto';
+
+/** Postgres unique_violation (23505); SQLite reports it as a constraint error. */
+function isUniqueViolation(err: any): boolean {
+  return err?.code === '23505' || /UNIQUE|duplicate key|constraint/i.test(err?.message ?? '');
+}
 import {
   Transaction,
   TransactionStatus,
@@ -74,7 +80,9 @@ export class TransactionService {
     const taxAmount = baseAmount * (taxRate / 100);
     const price = Number(product.price) * quantity; // selling price already set per product
 
-    const saved = await this.dataSource.transaction(async (manager) => {
+    let saved: Transaction;
+    try {
+      saved = await this.dataSource.transaction(async (manager) => {
       await this.userService.updateBalance(
         userId,
         -price,
@@ -104,7 +112,20 @@ export class TransactionService {
         status: TransactionStatus.PENDING,
       } as Partial<Transaction>);
       return manager.save(transaction);
-    });
+      });
+    } catch (err: any) {
+      // Two concurrent retries can both pass the clientRef lookup above; the
+      // unique index then rejects the loser. Return the winner instead of
+      // failing the caller — that is what idempotency promises.
+      if (clientRef && isUniqueViolation(err)) {
+        const existing = await this.transactionRepository.findOne({
+          where: { clientRef },
+          relations: ['product'],
+        });
+        if (existing) return existing;
+      }
+      throw err;
+    }
 
     // Balance already settled -> execute the top-up immediately.
     return this.executeTopup(saved.id);
@@ -423,9 +444,15 @@ export class TransactionService {
     return this.findById(id);
   }
 
+  /**
+   * Invoice ids are now unique-constrained in the database, so weak entropy
+   * turns a silent duplicate into a failed order. Timestamp + 1000 values of
+   * Math.random collides roughly once per thousand same-millisecond pairs;
+   * 5 crypto-random bytes makes that vanishingly unlikely.
+   */
   private generateInvoiceNumber(): string {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = crypto.randomBytes(5).toString('hex').toUpperCase();
     return `INV${timestamp}${random}`;
   }
 

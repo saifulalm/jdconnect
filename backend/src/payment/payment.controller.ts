@@ -8,6 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentService } from './payment.service';
 import { TransactionService } from '../transaction/transaction.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -32,7 +33,15 @@ export class PaymentController {
     };
   }
 
-  /** Midtrans HTTP notification (server-to-server). */
+  /**
+   * Midtrans HTTP notification (server-to-server).
+   *
+   * Deliberately far above the per-IP default: every callback arrives from
+   * the gateway's own address, so a settlement burst would otherwise be
+   * throttled and those payments would silently never reach the supplier.
+   * Abuse is bounded by the mandatory signature check, not by this limit.
+   */
+  @Throttle({ default: { limit: 1200, ttl: 60000 } })
   @Post('midtrans/callback')
   async midtransCallback(@Body() payload: any) {
     const result = this.paymentService.verifyAndParseWebhook(payload);

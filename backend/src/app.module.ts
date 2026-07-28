@@ -27,9 +27,13 @@ import { validateEnv } from './config/env.validation';
       envFilePath: '.env',
       validate: validateEnv,
     }),
+    // Per-IP default. Kept generous because many legitimate users share one
+    // address behind office NAT or mobile carrier CGNAT — a tight global
+    // limit locks out whole networks. Sensitive writes (login, OTP, orders)
+    // set their own much stricter limits with @Throttle.
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 100, // 100 requests per minute
+      limit: 300,
     }]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
