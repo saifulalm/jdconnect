@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { makeDynamicQris } from './qris.util';
+import { fetchWithTimeout } from '../common/http.util';
+import { timingSafeEqualHex } from '../common/crypto.util';
 
 export interface CreateChargeParams {
   orderId: string; // our invoice number
@@ -123,7 +125,7 @@ export class PaymentService {
       credit_card: { secure: true },
     };
 
-    const res = await fetch(`${this.snapBase}/transactions`, {
+    const res = await fetchWithTimeout(`${this.snapBase}/transactions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -145,11 +147,24 @@ export class PaymentService {
     };
   }
 
-  /** Verify + interpret a Midtrans HTTP notification payload. */
+  /**
+   * Verify + interpret a Midtrans HTTP notification payload.
+   *
+   * SECURITY: fails closed. This previously returned the payload unverified
+   * whenever the gateway was unconfigured — which is the default state and
+   * also the normal state for the QRIS driver — letting anyone settle any
+   * order by POSTing a forged notification to the public callback route.
+   */
   verifyAndParseWebhook(payload: any): WebhookResult | null {
     if (!this.isConfigured()) {
-      // Mock mode: trust payload (used by the local mock-pay endpoint).
-      return this.interpret(payload);
+      this.logger.warn(
+        'Rejected Midtrans webhook: gateway not configured, signature cannot be verified',
+      );
+      return null;
+    }
+    if (!payload?.order_id || !payload?.signature_key) {
+      this.logger.warn('Rejected Midtrans webhook: missing order_id or signature_key');
+      return null;
     }
     const expected = crypto
       .createHash('sha512')
@@ -157,7 +172,7 @@ export class PaymentService {
         `${payload.order_id}${payload.status_code}${payload.gross_amount}${this.serverKey}`,
       )
       .digest('hex');
-    if (expected !== payload.signature_key) {
+    if (!timingSafeEqualHex(expected, String(payload.signature_key))) {
       this.logger.warn(`Midtrans webhook signature mismatch for ${payload.order_id}`);
       return null;
     }
@@ -167,7 +182,7 @@ export class PaymentService {
   /** Poll Midtrans for the authoritative status of an order. */
   async checkStatus(orderId: string): Promise<WebhookResult | null> {
     if (!this.isConfigured()) return null;
-    const res = await fetch(`${this.apiBase}/${orderId}/status`, {
+    const res = await fetchWithTimeout(`${this.apiBase}/${orderId}/status`, {
       headers: { Accept: 'application/json', Authorization: this.authHeader() },
     });
     const json = (await res.json()) as any;

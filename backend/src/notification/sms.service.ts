@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { fetchWithTimeout } from '../common/http.util';
 
 export type MessagingDriver = 'whatsapp' | 'twilio' | 'none';
 
@@ -62,7 +63,7 @@ export class SmsService {
 
     try {
       if (this.driver === 'whatsapp') {
-        const res = await fetch(this.waUrl, {
+        const res = await fetchWithTimeout(this.waUrl, {
           method: 'POST',
           headers: {
             Authorization: this.waToken,
@@ -84,7 +85,7 @@ export class SmsService {
         From: this.twilioFrom,
         Body: message,
       });
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://api.twilio.com/2010-04-01/Accounts/${this.twilioSid}/Messages.json`,
         {
           method: 'POST',

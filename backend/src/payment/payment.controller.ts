@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { TransactionService } from '../transaction/transaction.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -34,12 +43,22 @@ export class PaymentController {
 
   /**
    * Dev-only helper: simulate a successful payment when running with the mock
-   * gateway (no Midtrans keys). Lets the full flow be demoed end-to-end.
+   * gateway. Lets the full flow be demoed end-to-end without a gateway.
+   *
+   * SECURITY: this settles an order for free, so it must never be reachable
+   * outside development. It used to be public with no environment check —
+   * only a "disabled when Midtrans is configured" guard, which left it wide
+   * open on any QRIS or mock deployment.
    */
   @Post('mock-pay/:invoiceNumber')
   async mockPay(@Param('invoiceNumber') invoiceNumber: string) {
-    if (this.paymentService.isConfigured()) {
-      return { status: 'disabled', message: 'Mock pay disabled when a real gateway is configured' };
+    if (process.env.NODE_ENV === 'production') {
+      throw new NotFoundException();
+    }
+    if (this.paymentService.gatewayName !== 'mock') {
+      throw new ForbiddenException(
+        `Mock pay is only available with the mock gateway (active: ${this.paymentService.gatewayName})`,
+      );
     }
     await this.transactionService.handlePaymentResult({
       orderId: invoiceNumber,

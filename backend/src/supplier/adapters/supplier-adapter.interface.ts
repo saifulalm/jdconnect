@@ -43,5 +43,5 @@ export interface SupplierAdapter {
   checkStatus(params: { sku: string; customerNo: string; refId: string }): Promise<SupplierTopupResult>;
 
   /** Parse + verify an async callback payload from the supplier (optional). */
-  parseCallback?(payload: any, signature?: string): SupplierTopupResult | null;
+  parseCallback?(payload: any, signature?: string, rawBody?: Buffer): SupplierTopupResult | null;
 }

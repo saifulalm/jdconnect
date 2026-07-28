@@ -1,4 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  Index,
+} from 'typeorm';
 import { Product } from '../../product/entities/product.entity';
 
 export enum TransactionStatus {
@@ -32,13 +40,30 @@ export enum PaymentStatus {
   FAILED = 'failed',
 }
 
+// Lookups happen on invoice (tracking), supplierRef (callbacks), userId
+// (history) and status (admin filters) — all of which were full table scans.
 @Entity('transactions')
+@Index(['userId', 'createdAt'])
+@Index(['status'])
+@Index(['createdAt'])
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  // Unique at the database level: application-generated ids alone are not a
+  // guarantee, and a collision would corrupt tracking and reconciliation.
+  @Index({ unique: true })
+  @Column({ unique: true })
   invoiceNumber: string;
+
+  /**
+   * Caller-supplied idempotency key (H2H `client_ref`). A dedicated, indexed
+   * column — the previous lookup queried inside the `metadata` json blob,
+   * which Postgres rejected, so retries silently created duplicate orders.
+   */
+  @Index({ unique: true, where: '"client_ref" IS NOT NULL' })
+  @Column({ nullable: true })
+  clientRef?: string;
 
   // Nullable: guest (loginless) orders have no user account.
   @Column({ nullable: true })
@@ -119,6 +144,7 @@ export class Transaction {
   @Column({ nullable: true })
   supplierDriver?: string; // digiflazz | mock | ...
 
+  @Index()
   @Column({ nullable: true })
   supplierRef?: string; // ref_id sent to supplier
 

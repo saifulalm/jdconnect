@@ -57,8 +57,8 @@ export class SupplierService {
     return this.adapter.checkStatus(params);
   }
 
-  parseCallback(payload: any, signature?: string): SupplierTopupResult | null {
-    return this.adapter.parseCallback?.(payload, signature) ?? null;
+  parseCallback(payload: any, signature?: string, rawBody?: Buffer): SupplierTopupResult | null {
+    return this.adapter.parseCallback?.(payload, signature, rawBody) ?? null;
   }
 
   /**

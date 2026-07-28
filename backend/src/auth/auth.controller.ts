@@ -43,11 +43,14 @@ export class AuthController {
     return this.authService.login(user);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
+  // Brute-force protection: password login had no limit at all.
+  @Throttle({ default: { limit: 8, ttl: 60000 } })
   @UseGuards(LocalAuthGuard)
   @Post('login')
   async login(@Request() req) {

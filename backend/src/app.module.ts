@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -17,12 +18,14 @@ import { TaxModule } from './tax/tax.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { OtpModule } from './otp/otp.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: validateEnv,
     }),
     ThrottlerModule.forRoot([{
       ttl: 60000,
@@ -89,6 +92,11 @@ import { CatalogModule } from './catalog/catalog.module';
     CatalogModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Without this the @Throttle decorators across the app are inert — the
+    // guard has to be registered for any rate limiting to happen at all.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

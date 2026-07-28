@@ -7,6 +7,8 @@ import {
   SupplierTopupResult,
   SupplierTopupStatus,
 } from './supplier-adapter.interface';
+import { fetchWithTimeout } from '../../common/http.util';
+import { timingSafeEqualHex } from '../../common/crypto.util';
 
 /**
  * Digiflazz H2H adapter.
@@ -44,7 +46,7 @@ export class DigiflazzAdapter implements SupplierAdapter {
   }
 
   private async post<T = any>(path: string, body: Record<string, any>): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithTimeout(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -99,17 +101,38 @@ export class DigiflazzAdapter implements SupplierAdapter {
     return this.topUp(params);
   }
 
-  parseCallback(payload: any, signature?: string): SupplierTopupResult | null {
-    // Digiflazz signs webhook with HMAC-SHA1(rawBody, webhookSecret) in X-Hub-Signature.
-    if (this.webhookSecret && signature) {
-      const expected =
-        'sha1=' +
-        crypto.createHmac('sha1', this.webhookSecret).update(JSON.stringify(payload)).digest('hex');
-      if (expected !== signature) {
-        this.logger.warn('Digiflazz webhook signature mismatch');
-        return null;
-      }
+  /**
+   * Digiflazz signs webhooks with HMAC-SHA1(rawBody, webhookSecret) in
+   * X-Hub-Signature.
+   *
+   * SECURITY: fails closed. Verification used to be skipped entirely when
+   * either the secret or the header was missing, so anyone who knew a ref_id
+   * could forge a "Sukses" with a fake serial — or force a refund on an order
+   * that actually succeeded.
+   */
+  parseCallback(payload: any, signature?: string, rawBody?: Buffer): SupplierTopupResult | null {
+    if (!this.webhookSecret) {
+      this.logger.error(
+        'Rejected Digiflazz callback: DIGIFLAZZ_WEBHOOK_SECRET is not set, signature cannot be verified',
+      );
+      return null;
     }
+    if (!signature) {
+      this.logger.warn('Rejected Digiflazz callback: missing X-Hub-Signature header');
+      return null;
+    }
+
+    // Sign the exact bytes received — re-serialising the parsed body changes
+    // key order and whitespace, which breaks otherwise valid signatures.
+    const body = rawBody ?? Buffer.from(JSON.stringify(payload), 'utf8');
+    const expected =
+      'sha1=' + crypto.createHmac('sha1', this.webhookSecret).update(body).digest('hex');
+
+    if (!timingSafeEqualHex(expected, signature)) {
+      this.logger.warn('Rejected Digiflazz callback: signature mismatch');
+      return null;
+    }
+
     const data = payload?.data ?? payload;
     if (!data?.ref_id) return null;
     return this.mapTrx(data, data.ref_id);

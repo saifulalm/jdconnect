@@ -50,10 +50,14 @@ export class TransactionService {
   async create(createTransactionDto: any, userId: string): Promise<Transaction> {
     const invoiceNumber = this.generateInvoiceNumber();
 
-    const clientRef = createTransactionDto.metadata?.client_ref;
+    // Idempotency: a caller retrying after a timeout must not be charged
+    // twice. Looks at the indexed clientRef column — querying inside the json
+    // metadata blob threw at the database and produced duplicate orders.
+    const clientRef: string | undefined = createTransactionDto.metadata?.client_ref;
     if (clientRef) {
       const existing = await this.transactionRepository.findOne({
-        where: { metadata: { client_ref: clientRef } as any },
+        where: { clientRef },
+        relations: ['product'],
       });
       if (existing) return existing;
     }
@@ -81,6 +85,7 @@ export class TransactionService {
 
       const transaction = manager.create(Transaction, {
         invoiceNumber,
+        clientRef,
         userId,
         channel: TransactionChannel.BALANCE,
         type: product.category as unknown as TransactionType,

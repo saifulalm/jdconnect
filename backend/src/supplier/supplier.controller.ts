@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Headers, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Req, UseGuards } from '@nestjs/common';
 import { SupplierService } from './supplier.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/roles/role.enum';
 import { TransactionService } from '../transaction/transaction.service';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 
 @Controller('supplier')
 export class SupplierController {
@@ -36,8 +38,12 @@ export class SupplierController {
    * Public endpoint — authenticity comes from the signed payload.
    */
   @Post('callback')
-  async callback(@Body() payload: any, @Headers('x-hub-signature') signature?: string) {
-    const result = this.supplierService.parseCallback(payload, signature);
+  async callback(
+    @Body() payload: any,
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-hub-signature') signature?: string,
+  ) {
+    const result = this.supplierService.parseCallback(payload, signature, req.rawBody);
     if (!result) return { status: 'ignored' };
     await this.transactionService.applySupplierResult(result);
     return { status: 'ok' };
