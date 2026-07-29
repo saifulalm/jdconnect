@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/roles/role.enum';
 import { TransactionService } from '../transaction/transaction.service';
+import { ObservabilityService } from '../observability/observability.service';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 
@@ -14,6 +15,7 @@ export class SupplierController {
   constructor(
     private readonly supplierService: SupplierService,
     private readonly transactionService: TransactionService,
+    private readonly observability: ObservabilityService,
   ) {}
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -30,8 +32,19 @@ export class SupplierController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERACCESS)
   @Post('sync')
-  async syncPriceList() {
-    return this.supplierService.syncPriceList();
+  async syncPriceList(@Req() req: any) {
+    const result = await this.supplierService.syncPriceList();
+    await this.observability.logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      actorRole: req.user?.role,
+      action: 'supplier.price_sync',
+      targetType: 'supplier',
+      targetId: result.driver,
+      detail: result,
+      ip: req.ip,
+    });
+    return result;
   }
 
   /**

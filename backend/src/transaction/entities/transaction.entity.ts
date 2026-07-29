@@ -31,6 +31,14 @@ export enum TransactionChannel {
   GATEWAY = 'gateway', // guest/user pays via payment gateway (Midtrans)
 }
 
+/** Whether money still has to travel back to the customer. */
+export enum RefundStatus {
+  NONE = 'none',
+  PENDING = 'pending', // owed to the customer, not yet sent
+  DONE = 'done',
+  REJECTED = 'rejected',
+}
+
 export enum PaymentStatus {
   UNPAID = 'unpaid',
   PENDING = 'pending',
@@ -52,7 +60,6 @@ export class Transaction {
 
   // Unique at the database level: application-generated ids alone are not a
   // guarantee, and a collision would corrupt tracking and reconciliation.
-  @Index({ unique: true })
   @Column({ unique: true })
   invoiceNumber: string;
 
@@ -139,6 +146,24 @@ export class Transaction {
 
   @Column({ nullable: true })
   paidAt?: Date;
+
+  /**
+   * Set when a paid gateway order failed at the supplier. The money has not
+   * moved back yet, so it must not be recorded as REFUNDED.
+   */
+  @Index()
+  @Column({
+    type: 'simple-enum',
+    enum: RefundStatus,
+    default: RefundStatus.NONE,
+  })
+  refundStatus: RefundStatus;
+
+  @Column({ nullable: true })
+  refundedAt?: Date;
+
+  @Column({ nullable: true })
+  refundNote?: string;
 
   // Upstream supplier (H2H) execution state.
   @Column({ nullable: true })

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { AppController } from './app.controller';
@@ -19,6 +20,8 @@ import { SupplierModule } from './supplier/supplier.module';
 import { OtpModule } from './otp/otp.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { validateEnv } from './config/env.validation';
+import { ObservabilityModule } from './observability/observability.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -27,6 +30,8 @@ import { validateEnv } from './config/env.validation';
       envFilePath: '.env',
       validate: validateEnv,
     }),
+    // Drives the reconciliation job that rescues orders left mid-flight.
+    ScheduleModule.forRoot(),
     // Per-IP default. Kept generous because many legitimate users share one
     // address behind office NAT or mobile carrier CGNAT — a tight global
     // limit locks out whole networks. Sensitive writes (login, OTP, orders)
@@ -94,6 +99,8 @@ import { validateEnv } from './config/env.validation';
     SupplierModule,
     OtpModule,
     CatalogModule,
+    ObservabilityModule,
+    ReconciliationModule,
   ],
   controllers: [AppController],
   providers: [

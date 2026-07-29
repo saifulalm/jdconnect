@@ -19,6 +19,7 @@ import {
   AlertCircle,
   BadgeCheck,
   RotateCw,
+  Undo2,
 } from "lucide-react";
 
 type AdminTransaction = {
@@ -32,6 +33,8 @@ type AdminTransaction = {
   status: string;
   paymentStatus?: string;
   paymentMethod?: string;
+  refundStatus?: string;
+  refundNote?: string;
   serialNumber?: string;
   message?: string;
   createdAt?: string;
@@ -140,6 +143,28 @@ export default function AdminTransactionsPage() {
     }
   }
 
+  /** The customer paid but the top-up failed — record that money went back. */
+  async function settleRefund(t: AdminTransaction) {
+    setBusyId(t.id);
+    setNotice(null);
+    try {
+      const res = await fetch(apiUrl(`/admin/transactions/${t.id}/refund`), {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ note: "Refund dikonfirmasi dari panel admin" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setNotice({ ok: true, text: `Refund ${t.invoiceNumber} ditandai selesai.` });
+        await load();
+      } else {
+        setNotice({ ok: false, text: data?.message || "Gagal menandai refund." });
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function setStatus(t: AdminTransaction, status: string) {
     setBusyId(t.id);
     setNotice(null);
@@ -163,7 +188,9 @@ export default function AdminTransactionsPage() {
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return transactions.filter((t) => {
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
+      if (statusFilter === "refund_owed") {
+        if (t.refundStatus !== "pending") return false;
+      } else if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (!q) return true;
       return (
         (t.invoiceNumber || t.invoice || "").toLowerCase().includes(q) ||
@@ -223,7 +250,7 @@ export default function AdminTransactionsPage() {
             />
           </div>
           <div className="flex gap-1 bg-muted p-1 rounded-xl overflow-x-auto">
-            {["all", "pending", "processing", "success", "failed"].map((s) => (
+            {["all", "refund_owed", "pending", "processing", "success", "failed"].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
@@ -233,7 +260,11 @@ export default function AdminTransactionsPage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {s === "all" ? "Semua" : STATUS_UI[s]?.label || s}
+                {s === "all"
+                  ? "Semua"
+                  : s === "refund_owed"
+                    ? "Refund Tertunggak"
+                    : STATUS_UI[s]?.label || s}
               </button>
             ))}
           </div>
@@ -304,6 +335,13 @@ export default function AdminTransactionsPage() {
                               {t.paymentMethod}
                             </p>
                           )}
+                          {t.refundStatus === "pending" && (
+                            <p className="mt-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
+                                <AlertCircle className="h-3 w-3" /> Refund tertunggak
+                              </span>
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3.5">
                           <span
@@ -337,6 +375,17 @@ export default function AdminTransactionsPage() {
                                 title="Kirim ulang ke supplier"
                               >
                                 <RotateCw className="h-3.5 w-3.5" /> Retry
+                              </Button>
+                            )}
+                            {t.refundStatus === "pending" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => settleRefund(t)}
+                                title="Tandai uang sudah dikembalikan ke pelanggan"
+                              >
+                                <Undo2 className="h-3.5 w-3.5" /> Refund selesai
                               </Button>
                             )}
                             {t.status !== "success" && t.status !== "failed" && (

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -15,12 +16,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/roles/role.enum';
+import { ObservabilityService } from '../observability/observability.service';
 
 @Controller('payment')
 export class PaymentController {
   constructor(
     private readonly paymentService: PaymentService,
     private readonly transactionService: TransactionService,
+    private readonly observability: ObservabilityService,
   ) {}
 
   /** Public client config for the frontend Snap embed. */
@@ -86,7 +89,17 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERACCESS)
   @Post('confirm/:invoiceNumber')
-  async confirmManual(@Param('invoiceNumber') invoiceNumber: string) {
+  async confirmManual(@Param('invoiceNumber') invoiceNumber: string, @Req() req) {
+    await this.observability.logAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      actorRole: req.user.role,
+      action: 'payment.manual_confirm',
+      targetType: 'transaction',
+      targetId: invoiceNumber,
+      detail: { gateway: this.paymentService.gatewayName },
+      ip: req.ip,
+    });
     await this.transactionService.handlePaymentResult({
       orderId: invoiceNumber,
       paid: true,

@@ -79,6 +79,8 @@ export class AdminService {
         status: t.status,
         paymentStatus: t.paymentStatus,
         paymentMethod: t.paymentMethod,
+        refundStatus: t.refundStatus,
+        refundNote: t.refundNote,
         serialNumber: t.serialNumber,
         message: t.supplierMessage,
         createdAt: t.createdAt,

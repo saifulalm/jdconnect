@@ -19,6 +19,7 @@ import {
   TransactionType,
   TransactionChannel,
   PaymentStatus,
+  RefundStatus,
 } from './entities/transaction.entity';
 import { Product } from '../product/entities/product.entity';
 import { TaxService } from '../tax/tax.service';
@@ -29,6 +30,7 @@ import { PaymentService } from '../payment/payment.service';
 import { NotificationService } from '../notification/notification.service';
 import { SmsService } from '../notification/sms.service';
 import { SupplierTopupResult } from '../supplier/adapters/supplier-adapter.interface';
+import { ObservabilityService } from '../observability/observability.service';
 
 @Injectable()
 export class TransactionService {
@@ -48,6 +50,7 @@ export class TransactionService {
     private paymentService: PaymentService,
     private notificationService: NotificationService,
     private smsService: SmsService,
+    private observability: ObservabilityService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -343,13 +346,40 @@ export class TransactionService {
           trx.invoiceNumber,
           `Refund for failed top-up ${trx.invoiceNumber}`,
         );
-        await this.transactionRepository.update(trx.id, { paymentStatus: PaymentStatus.REFUNDED });
+        await this.transactionRepository.update(trx.id, {
+          paymentStatus: PaymentStatus.REFUNDED,
+          refundStatus: RefundStatus.DONE,
+          refundedAt: new Date(),
+          refundNote: 'Saldo dikembalikan otomatis',
+        });
       } catch (err: any) {
         this.logger.error(`Refund failed for ${trx.invoiceNumber}: ${err.message}`);
       }
     } else {
-      // Gateway order: flag for manual/auto refund via gateway.
-      await this.transactionRepository.update(trx.id, { paymentStatus: PaymentStatus.REFUNDED });
+      // Gateway order. No refund API call is made here, so claiming REFUNDED
+      // would be a lie: the customer's money is still with the gateway. Mark
+      // it as owed and queue it for an operator, loudly.
+      await this.transactionRepository.update(trx.id, {
+        paymentStatus: PaymentStatus.PAID,
+        refundStatus: RefundStatus.PENDING,
+        supplierMessage: trx.supplierMessage
+          ? `${trx.supplierMessage} — refund pelanggan menunggu diproses`
+          : 'Top-up gagal, refund pelanggan menunggu diproses',
+      });
+      this.logger.error(
+        `REFUND OWED: ${trx.invoiceNumber} (${trx.price}) — top-up failed after payment was taken`,
+      );
+      await this.observability.logAudit({
+        action: 'refund.owed',
+        targetType: 'transaction',
+        targetId: trx.invoiceNumber,
+        detail: {
+          amount: Number(trx.price),
+          gateway: trx.paymentMethod,
+          phone: trx.phoneNumber,
+        },
+        success: false,
+      });
     }
   }
 
@@ -423,6 +453,34 @@ export class TransactionService {
       .execute();
 
     return result.affected ?? 0;
+  }
+
+  /**
+   * Record that an owed refund was actually paid back to the customer.
+   * Only a human can confirm this, so it is an explicit admin action.
+   */
+  async markRefundSettled(id: string, note?: string): Promise<Transaction> {
+    const trx = await this.findById(id);
+    if (!trx) throw new BadRequestException('Transaction not found');
+    if (trx.refundStatus !== RefundStatus.PENDING) {
+      throw new BadRequestException('Tidak ada refund tertunggak pada transaksi ini');
+    }
+    await this.transactionRepository.update(id, {
+      refundStatus: RefundStatus.DONE,
+      paymentStatus: PaymentStatus.REFUNDED,
+      refundedAt: new Date(),
+      refundNote: note?.trim() || 'Refund dikonfirmasi manual oleh admin',
+    });
+    return (await this.findById(id))!;
+  }
+
+  /** Orders where the customer paid but the top-up failed and money is owed. */
+  findRefundsOwed(): Promise<Transaction[]> {
+    return this.transactionRepository.find({
+      where: { refundStatus: RefundStatus.PENDING },
+      relations: ['product'],
+      order: { createdAt: 'DESC' },
+    });
   }
 
   /** Public guest tracking: invoice + last 4 digits of phone must match. */
