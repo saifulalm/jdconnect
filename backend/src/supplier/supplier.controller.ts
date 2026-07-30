@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SupplierService } from './supplier.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,6 +20,22 @@ export class SupplierController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERACCESS)
+  /** Every registered supplier with priority, config and breaker state. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
+  @Get('list')
+  listSuppliers() {
+    return this.supplierService.listSuppliers();
+  }
+
+  /** Deposit balance for each supplier, so none runs dry unnoticed. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERACCESS)
+  @Get('balances')
+  getBalances() {
+    return this.supplierService.getBalances();
+  }
+
   @Get('balance')
   async getBalance() {
     return {
@@ -32,8 +48,8 @@ export class SupplierController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERACCESS)
   @Post('sync')
-  async syncPriceList(@Req() req: any) {
-    const result = await this.supplierService.syncPriceList();
+  async syncPriceList(@Req() req: any, @Query('driver') driver?: string) {
+    const result = await this.supplierService.syncPriceList(driver);
     await this.observability.logAudit({
       actorId: req.user?.id,
       actorEmail: req.user?.email,

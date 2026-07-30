@@ -95,6 +95,8 @@ export class ReconciliationService {
             ? `${trx.phoneNumber}${trx.metadata.server_id}`
             : trx.phoneNumber,
           refId: trx.supplierRef,
+          // Ask the supplier that owns the reference, not just the primary.
+          driver: trx.supplierDriver,
         });
         if (result.status !== 'pending') {
           await this.transactionService.applySupplierResult(result);

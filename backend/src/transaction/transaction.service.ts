@@ -272,7 +272,7 @@ export class TransactionService {
       topupAttempts: (trx.topupAttempts ?? 0) + 1,
     });
 
-    let result: SupplierTopupResult;
+    let result: SupplierTopupResult & { driver?: string };
     try {
       result = await this.supplierService.topUp({
         sku,
@@ -289,6 +289,11 @@ export class TransactionService {
         supplierMessage: `Supplier error: ${err.message}`,
       });
       return (await this.findById(trx.id))!;
+    }
+
+    // Failover means the primary may not be the supplier that answered.
+    if (result.driver && result.driver !== trx.supplierDriver) {
+      await this.transactionRepository.update(trx.id, { supplierDriver: result.driver });
     }
 
     return this.settle(trx.id, result);
